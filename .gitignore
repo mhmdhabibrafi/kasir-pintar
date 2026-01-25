@@ -1,0 +1,5 @@
+.env
+storage/cache/
+storage/logs/
+storage/data/
+public/uploads/

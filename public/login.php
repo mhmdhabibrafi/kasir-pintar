@@ -1,0 +1,54 @@
+<?php
+
+declare(strict_types=1);
+
+require_once __DIR__ . '/../app/auth/login.php';
+require_once __DIR__ . '/../app/helpers/format_helper.php';
+
+$title = 'Login KASIR PINTAR';
+$hideTopbar = true;
+require_once __DIR__ . '/../app/views/layouts/header.php';
+?>
+
+<div class="kp-auth">
+    <div class="row justify-content-center w-100">
+        <div class="col-12 col-md-6 col-lg-4">
+            <div class="kp-card kp-auth-card p-4 p-md-5">
+                    <div class="text-center mb-4">
+                        <div class="kp-logo-wrap mx-auto">
+                            <img src="<?php echo e(base_url('assets/images/logo.jpg')); ?>" alt="KASIR PINTAR">
+                        </div>
+                        <div class="kp-brand-title mt-2">KASIR PINTAR</div>
+                    </div>
+                    <?php if (!empty($errors)): ?>
+                        <div class="alert alert-danger">
+                            <?php foreach ($errors as $error): ?>
+                                <div><?php echo e($error); ?></div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+
+                    <form method="POST">
+                        <?php echo csrf_field(); ?>
+                        <div class="mb-3">
+                            <label for="username" class="form-label">Username</label>
+                            <input type="text" id="username" name="username" class="form-control kp-input" value="<?php echo e($oldUsername ?? ''); ?>" required>
+                        </div>
+                        <div class="mb-4">
+                            <label for="password" class="form-label">Password</label>
+                            <input type="password" id="password" name="password" class="form-control kp-input" required>
+                        </div>
+                        <button class="btn kp-btn-primary kp-btn-auth w-100" type="submit">
+                            <span class="material-icons-outlined">login</span>
+                            Login
+                        </button>
+                    </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<?php
+require_once __DIR__ . '/../app/views/layouts/footer.php';
+?>
+
