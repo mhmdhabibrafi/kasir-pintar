@@ -1,141 +1,133 @@
-project:
-  name: "KASPIN — Kasir Pintar"
-  version: "1.0"
-  author: "Muhammad Habib Rafi"
-  type: "Point of Sale (POS)"
-  stack:
-    backend: "PHP 8.x"
-    database: "MySQL 5.7+ / MariaDB"
-    frontend: "Mobile-first responsive UI"
-  tagline: "POS modern, aman, mobile-first, dan siap dijual"
+KASIR PINTAR
+============
 
-overview:
-  description: >
-    KASPIN adalah sistem kasir (Point of Sale) berbasis PHP dan MySQL
-    yang dirancang khusus untuk kebutuhan UMKM dan toko modern.
-    Fokus utama KASPIN adalah kemudahan penggunaan di perangkat mobile,
-    keamanan transaksi, dan laporan bisnis yang siap digunakan untuk
-    pengambilan keputusan.
-  target_users:
-    - "Toko retail"
-    - "Warung & UMKM"
-    - "Coffee shop"
-    - "Mini market"
-    - "Bisnis offline yang membutuhkan POS stabil & ringan"
+Ringkas
+-------
+POS kasir berbasis PHP + MySQL dengan fokus mobile-first, keamanan, dan laporan siap jual.
 
-key_value_proposition:
-  - "Mobile-first: nyaman dipakai di HP kasir"
-  - "Keamanan tinggi tanpa framework berat"
-  - "Transaksi anti double submit & atomic"
-  - "Tanpa mengubah skema database existing"
-  - "Laporan lengkap & siap dijual ke klien"
+Persyaratan
+-----------
+- PHP 8.x
+- MySQL 5.7+ / MariaDB
+- XAMPP/Laragon/LAMP
+- Extension PHP: pdo_mysql, curl, fileinfo
 
-core_features:
-  pos:
-    - "Kasir mobile-first & desktop friendly"
-    - "Transaksi atomic (BEGIN / COMMIT / ROLLBACK)"
-    - "Anti double klik / double submit"
-    - "Diskon item & order"
-    - "Voucher promo"
-    - "Pajak, service charge & pembulatan"
-    - "Refund / retur tanpa menghapus transaksi"
-    - "Stok virtual + batas minimum"
-  print_and_export:
-    - "Print struk ukuran 58mm & 80mm"
-    - "Cetak ulang struk dari riwayat transaksi"
-    - "Export laporan ke PDF & CSV"
-  roles_and_access:
-    admin:
-      permissions:
-        - "Akses penuh sistem"
-        - "Manajemen data & konfigurasi"
-    owner:
-      permissions:
-        - "Laporan penjualan"
-        - "Export data"
-        - "Notifikasi Telegram"
-        - "Akses kasir"
-    employee:
-      permissions:
-        - "Kasir"
-        - "Riwayat transaksi"
-  shift_and_cash:
-    - "Buka & tutup shift kasir"
-    - "Cash in & cash out"
-    - "Transaksi ditolak jika shift belum dibuka"
-    - "Semua aktivitas tercatat"
+Instalasi (XAMPP)
+-----------------
+1) Taruh proyek di `C:\xampp\htdocs\kasir-pintar`
+2) Buat database (contoh: `kasir_pintar`)
+3) Import skema awal:
+   - `database/schema.sql`
+4) Atur koneksi DB di `app/config/database.php`
+5) Akses aplikasi:
+   - `http://localhost/kasir-pintar/public`
 
-telegram_integration:
-  enabled: true
-  description: >
-    Sistem mendukung notifikasi Telegram untuk error,
-    keamanan, dan aktivitas penting. Token Telegram tidak
-    disimpan di repository demi keamanan.
-  environment_variables:
-    - "TELEGRAM_BOT_TOKEN"
-    - "TELEGRAM_CHAT_ID"
+Catatan migrasi fitur baru
+--------------------------
+Saat aplikasi pertama kali dijalankan, sistem akan otomatis membuat tabel tambahan
+untuk shift/stok/promo/refund/transaction_meta. Pastikan user DB punya izin CREATE.
 
-data_storage_without_db_changes:
-  description: >
-    Untuk menjaga kompatibilitas dengan database existing,
-    data tambahan disimpan dalam file JSON tanpa
-    mengubah skema database utama.
-  files:
-    inventory_json: "Stok virtual & histori penyesuaian"
-    promos_json: "Pajak, service charge & voucher"
-    refunds_json: "Log refund & retur"
-    shifts_json: "Shift kasir & cash flow"
-    transactions_meta_json: "Diskon, pajak & pembulatan per transaksi"
+Reset data (tanpa hapus users/roles)
+-----------------------------------
+Gunakan file berikut untuk membersihkan data transaksi/produk/shift/dll:
+- `database/clear_all_data.sql`
 
-system_requirements:
-  php: ">= 8.x"
-  database: "MySQL 5.7+ / MariaDB"
-  server: "XAMPP / Laragon / LAMP"
-  php_extensions:
-    - "pdo_mysql"
-    - "curl"
-    - "fileinfo"
+Jalankan via phpMyAdmin:
+Database -> Import -> pilih `database/clear_all_data.sql` -> Go
 
-installation_xampp:
-  steps:
-    - "Letakkan project di C:\\xampp\\htdocs\\kasir-pintar"
-    - "Import database yang sudah ada (tanpa mengubah skema)"
-    - "Atur koneksi database di app/config/database.php"
-    - "Akses aplikasi via http://localhost/kasir-pintar/public"
+Konfigurasi Telegram
+--------------------
+Token Telegram tidak disimpan di repo. Set via environment variable:
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_CHAT_ID`
 
-logging:
-  security_log: "storage/logs/security.log (login gagal, CSRF, Telegram error)"
-  audit_log: "storage/logs/audit.log (aksi admin & void transaksi)"
+Opsi `.env` (di root project):
+- Buat file `.env` lalu isi:
+  - `TELEGRAM_BOT_TOKEN="isi_token"`
+  - `TELEGRAM_CHAT_ID="-123456789"`
 
-manual_testing_checklist:
-  security:
-    - "Login & logout semua role"
-    - "Proteksi akses admin & owner"
-    - "CSRF protection berjalan"
-    - "Rate limit login aktif"
-  pos:
-    - "Transaksi single & multi item"
-    - "Diskon, voucher, pajak & pembulatan valid"
-    - "Anti spam klik bayar"
-    - "Print & reprint struk"
-    - "Shift wajib aktif"
-  mobile_ui:
-    - "Tidak ada horizontal scroll"
-    - "Bottom navigation tidak menutup konten"
-    - "Modal pembayaran bisa discroll"
+Contoh (Apache httpd.conf / vhost):
+SetEnv TELEGRAM_BOT_TOKEN "isi_token"
+SetEnv TELEGRAM_CHAT_ID "isi_chat_id"
 
-backup_and_restore:
-  backup: "Export database via phpMyAdmin"
-  restore: "Import file SQL ke database tujuan"
+Contoh (PowerShell sementara):
+$env:TELEGRAM_BOT_TOKEN="isi_token"
+$env:TELEGRAM_CHAT_ID="isi_chat_id"
 
-selling_points:
-  - "Siap dijual ke UMKM tanpa biaya lisensi mahal"
-  - "Cocok untuk POS custom atau white-label"
-  - "Ringan, stabil, dan mudah dikembangkan"
-  - "Ideal untuk portofolio, produk komersial, atau SaaS lokal"
+Catatan: restart Apache setelah set env di server.
 
-future_potential:
-  - "Konversi ke APK (Flutter / WebView)"
-  - "Integrasi payment gateway"
-  - "Cloud sync multi-outlet"
-  - "Dashboard analytics lanjutan"
+Akun
+----
+Gunakan akun yang ada di database. Jika perlu, buat manual lewat menu Admin.
+Contoh role:
+- Admin: akses penuh
+- Bos/Owner: laporan + export + telegram + kasir
+- Karyawan: kasir + riwayat
+
+Lokasi Log
+----------
+- `storage/logs/security.log` (login gagal, CSRF, telegram error)
+- `storage/logs/audit.log` (aksi admin, void item)
+
+Fitur Operasional
+-----------------
+- POS kasir mobile-first + desktop rapi
+- Transaksi atomic (BEGIN/COMMIT/ROLLBACK)
+- Anti double submit via token transaksi
+- Print struk: `print_receipt.php?id=ID&paper=58|80`
+- Export laporan: PDF + CSV
+- Shift kasir + cash in/out + close shift
+- Diskon item/order, voucher, pajak, service, pembulatan
+- Refund/retur tanpa menghapus transaksi (opsi restock)
+- Stok virtual + batas minimum
+
+Penyimpanan Data (Database)
+---------------------------
+Tabel tambahan yang dibuat otomatis:
+- `shifts`, `shift_movements`
+- `inventory_items`, `inventory_logs`
+- `promo_settings`, `promo_vouchers`
+- `refunds`, `refund_items`
+- `transaction_meta`
+
+Menu
+----
+- Shift & Kas: `shift.php`
+- Kelola Stok: `admin_inventory.php`
+- Promo & Pajak: `admin_promos.php`
+- Refund & Retur: `admin_refunds.php`
+
+Checklist Test Manual
+---------------------
+Security:
+- Login/logout semua role + timeout session
+- Karyawan akses admin/bos via URL -> ditolak
+- CSRF invalid -> ditolak
+- Rate limit login bekerja
+
+POS:
+- Checkout 1 item, multi item, qty besar
+- Diskon item/order, voucher, pajak, pembulatan sesuai input
+- Pembayaran pas/lebih; kembalian benar
+- Spam klik bayar -> tidak terjadi transaksi dobel
+- Print struk dari riwayat & setelah transaksi
+- Shift belum dibuka -> transaksi ditolak
+
+Mobile:
+- Tidak ada horizontal scroll (login/kasir/riwayat/bos/admin)
+- Bottom nav tidak menutup konten + safe-area OK
+- Modal bayar bisa discroll; tombol mudah ditekan
+
+Reports/Admin:
+- Filter laporan benar, export PDF/CSV berhasil
+- Admin CRUD validasi input bekerja
+- Refund tercatat dan mengurangi net revenue
+
+Backup & Restore (Singkat)
+--------------------------
+- Backup: export database via phpMyAdmin
+- Restore: import file SQL ke database tujuan
+
+Changelog
+---------
+Lihat `CHANGELOG.md`.
