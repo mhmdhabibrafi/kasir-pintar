@@ -3,7 +3,7 @@ KASIR PINTAR
 
 Ringkas
 -------
-POS kasir berbasis PHP + MySQL dengan fokus mobile-first, keamanan, dan laporan siap jual.
+POS kasir berbasis PHP + MySQL dengan fokus mobile-first, keamanan, dan laporan.
 
 Persyaratan
 -----------
