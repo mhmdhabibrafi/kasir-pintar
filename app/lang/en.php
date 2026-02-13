@@ -71,7 +71,7 @@ return [
     'role.bos' => 'owner',
     'role.karyawan' => 'staff',
 
-    'app.footer_version' => 'My Kaspin version 1.0 by Muhammad Habib Rafi',
+    'app.footer_version' => 'Kaspindo version 1.0 by Muhammad Habib Rafi',
     'support.whatsapp_title' => 'Chat Admin Support 24/7',
     'support.whatsapp_label' => '24/7 Support',
 

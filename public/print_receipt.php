@@ -135,8 +135,8 @@ if (is_array($meta) && isset($meta['grand_total'])) {
 <body>
     <div class="receipt">
         <div class="center">
-            <img class="receipt-logo" src="<?php echo e(base_url('assets/images/logo.jpg')); ?>" alt="MY KASPIN">
-            <strong>MY KASPIN</strong><br>
+            <img class="receipt-logo" src="<?php echo e(base_url('assets/images/logo.jpg')); ?>" alt="KASPINDO">
+            <strong>KASPINDO</strong><br>
             <span class="muted">Struk Pembayaran</span>
         </div>
         <div class="line"></div>
@@ -263,7 +263,7 @@ if (is_array($meta) && isset($meta['grand_total'])) {
                 <circle cx="12" cy="12" r="3.5" fill="none" stroke="#000" stroke-width="1.6"/>
                 <circle cx="17.2" cy="6.8" r="1" fill="#000"/>
             </svg>
-            <span>@mykaspin</span>
+            <span>@kaspindo</span>
         </div>
         <div class="center muted">Terima kasih!</div>
     </div>

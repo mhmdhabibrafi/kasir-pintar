@@ -250,9 +250,9 @@ $logoUrl = base_url('assets/images/logo.jpg');
     <div class="report">
         <div class="report-header">
             <div class="brand">
-                <img src="<?php echo e($logoUrl); ?>" alt="MY KASPIN">
+                <img src="<?php echo e($logoUrl); ?>" alt="KASPINDO">
                 <div>
-                    <div class="brand-title">MY KASPIN</div>
+                    <div class="brand-title">KASPINDO</div>
                     <div class="muted">Laporan Transaksi</div>
                 </div>
             </div>

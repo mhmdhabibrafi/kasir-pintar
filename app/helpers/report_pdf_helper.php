@@ -120,7 +120,7 @@ class BosReportPDF extends BasePDF
         if ($this->logoPath !== '' && is_file($this->logoPath)) {
             $this->Image($this->logoPath, 10, 8, 14, 14);
         }
-        $this->Cell(0, 6, pdf_text('MY KASPIN'), 0, 1, 'C');
+        $this->Cell(0, 6, pdf_text('KASPINDO'), 0, 1, 'C');
         $this->SetFont('Arial', 'B', 13);
         $this->Cell(0, 6, pdf_text('LAPORAN TRANSAKSI'), 0, 1, 'C');
         $this->Ln(4);
@@ -132,7 +132,7 @@ class BosReportPDF extends BasePDF
         $this->SetFont('Arial', '', 8);
         $this->SetTextColor(100, 116, 139);
         $this->Cell(0, 4, pdf_text('Laporan ini dibuat otomatis oleh sistem.'), 0, 1, 'C');
-        $this->Cell(0, 4, pdf_text('MY KASPIN | Halaman ' . $this->PageNo() . '/{nb}'), 0, 0, 'C');
+        $this->Cell(0, 4, pdf_text('KASPINDO | Halaman ' . $this->PageNo() . '/{nb}'), 0, 0, 'C');
         $this->SetTextColor(15, 23, 42);
     }
 }
@@ -147,7 +147,7 @@ class CashReportPDF extends BasePDF
         if ($this->logoPath !== '' && is_file($this->logoPath)) {
             $this->Image($this->logoPath, 10, 8, 14, 14);
         }
-        $this->Cell(0, 6, pdf_text('MY KASPIN'), 0, 1, 'C');
+        $this->Cell(0, 6, pdf_text('KASPINDO'), 0, 1, 'C');
         $this->SetFont('Arial', 'B', 13);
         $this->Cell(0, 6, pdf_text('LAPORAN KAS HARIAN'), 0, 1, 'C');
         $this->Ln(4);
@@ -159,7 +159,7 @@ class CashReportPDF extends BasePDF
         $this->SetFont('Arial', '', 8);
         $this->SetTextColor(100, 116, 139);
         $this->Cell(0, 4, pdf_text('Laporan ini dibuat otomatis oleh sistem.'), 0, 1, 'C');
-        $this->Cell(0, 4, pdf_text('MY KASPIN | Halaman ' . $this->PageNo() . '/{nb}'), 0, 0, 'C');
+        $this->Cell(0, 4, pdf_text('KASPINDO | Halaman ' . $this->PageNo() . '/{nb}'), 0, 0, 'C');
         $this->SetTextColor(15, 23, 42);
     }
 }
@@ -541,7 +541,7 @@ function build_receipt_pdf(array $receipt): string
     }
 
     $pdf->SetFont('Courier', 'B', 9);
-    $pdf->Cell(0, 4, pdf_text('MY KASPIN'), 0, 1, 'C');
+    $pdf->Cell(0, 4, pdf_text('KASPINDO'), 0, 1, 'C');
     $pdf->SetFont('Courier', '', 8);
     $pdf->Cell(0, 4, pdf_text('Struk Pembayaran'), 0, 1, 'C');
     $pdf->Ln(2);
@@ -594,7 +594,7 @@ function build_receipt_pdf(array $receipt): string
 
     $pdf->Cell(0, 4, pdf_text($divider), 0, 1, 'C');
     $pdf->SetFont('Courier', '', 8);
-    $pdf->Cell(0, 4, pdf_text('@mykaspin'), 0, 1, 'C');
+    $pdf->Cell(0, 4, pdf_text('@kaspindo'), 0, 1, 'C');
     $pdf->SetFont('Courier', '', 7);
     $storeAddress = 'Jl. Sma 1 Kel No.Rt. 16, Aur, Sarolangun, Kab. Sarolangun, Jambi 37481';
     $pdf->MultiCell(0, 3.5, pdf_text('Lokasi: ' . $storeAddress), 0, 'C');

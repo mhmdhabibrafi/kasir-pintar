@@ -1,4 +1,4 @@
-# MY KASPIN
+# KASPINDO
 
 Aplikasi POS berbasis PHP + MySQL untuk operasional kasir, kontrol shift, kas harian, refund, member loyalitas, notifikasi Telegram, dan pelaporan.
 
@@ -48,11 +48,11 @@ Aplikasi POS berbasis PHP + MySQL untuk operasional kasir, kontrol shift, kas ha
 - Ekstensi PHP: `pdo_mysql`, `curl`, `fileinfo`
 
 ## Instalasi (XAMPP)
-1. Taruh proyek ke `C:\xampp\htdocs\mykaspin`.
-2. Buat database (ikuti nama di `app/config/database.php`, default saat ini `kasir_pintar`).
+1. Taruh proyek ke `C:\xampp\htdocs\kaspindo`.
+2. Buat database (ikuti nama di `app/config/database.php`, default saat ini `kaspindo`).
 3. Import skema awal: `database/schema.sql`.
 4. Atur koneksi DB di `app/config/database.php`.
-5. Akses aplikasi: `http://localhost/mykaspin/public`.
+5. Akses aplikasi: `http://localhost/kaspindo/public`.
 
 ## Migrasi Otomatis
 Saat aplikasi berjalan, sistem akan memastikan tabel tambahan tersedia lewat helper migrasi.

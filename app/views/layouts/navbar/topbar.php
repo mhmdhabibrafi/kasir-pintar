@@ -30,9 +30,9 @@ $roleLabel = $role !== 'guest' ? __('role.' . $role) : 'guest';
             <div class="kp-topbar-left">
                 <div class="d-flex align-items-center gap-2 d-lg-none kp-topbar-brand">
                     <div class="kp-logo-wrap sm">
-                        <img src="<?php echo e(base_url('assets/images/logo.jpg')); ?>" alt="MY KASPIN">
+                        <img src="<?php echo e(base_url('assets/images/logo.jpg')); ?>" alt="KASPINDO">
                     </div>
-                    <div class="kp-brand">MY KASPIN</div>
+                    <div class="kp-brand">KASPINDO</div>
                 </div>
                 <div class="fw-semibold kp-topbar-title"><?php echo e($pageTitle); ?></div>
                 <div class="kp-muted small d-none d-md-block kp-topbar-date"><?php echo e($todayLabel); ?></div>

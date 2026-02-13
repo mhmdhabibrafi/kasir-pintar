@@ -60,10 +60,10 @@ if ($role === 'admin') {
 <aside class="kp-sidebar d-none d-lg-flex flex-column">
     <div class="kp-logo">
         <div class="kp-logo-wrap">
-            <img src="<?php echo e(base_url('assets/images/logo.jpg')); ?>" alt="MY KASPIN">
+            <img src="<?php echo e(base_url('assets/images/logo.jpg')); ?>" alt="KASPINDO">
         </div>
         <div>
-            <div class="kp-brand-title">MY KASPIN</div>
+            <div class="kp-brand-title">KASPINDO</div>
         </div>
     </div>
 

@@ -6,7 +6,7 @@ require_once __DIR__ . '/../../helpers/auth_helper.php';
 require_once __DIR__ . '/../../helpers/format_helper.php';
 require_once __DIR__ . '/../../helpers/i18n_helper.php';
 
-$title = $title ?? 'MY KASPIN';
+$title = $title ?? 'KASPINDO';
 $user = current_user();
 $hideTopbar = $hideTopbar ?? false;
 $currentLang = i18n_current_lang();

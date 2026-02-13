@@ -1,7 +1,7 @@
 <?php
 /**
  * Database Configuration
- * Project : MY KASPIN
+ * Project : KASPINDO
  * DB      : MySQL
  * Driver  : PDO
  */
@@ -15,7 +15,7 @@ function db(): PDO
     }
 
     $DB_HOST = 'localhost';
-    $DB_NAME = 'kasir_pintar';
+    $DB_NAME = 'kaspindo';
     $DB_USER = 'root';
     $DB_PASS = ''; // default XAMPP kosong
     $DB_CHARSET = 'utf8mb4';
@@ -41,4 +41,3 @@ function db(): PDO
 
     return $pdo;
 }
-

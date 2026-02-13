@@ -55,7 +55,7 @@ $rootEnv = dirname(__DIR__, 2) . '/.env';
 load_env_file($rootEnv);
 
 const BASE_URL = '';
-const BASE_PATH = '/mykaspin';
+const BASE_PATH = '/kaspindo';
 const SESSION_IDLE_TIMEOUT = 1800;
 const SESSION_ABSOLUTE_TIMEOUT = 28800;
 const LOGIN_RATE_LIMIT_MAX_ATTEMPTS = 5;

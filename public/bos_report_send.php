@@ -112,7 +112,7 @@ $pdfPath = $tmp . '.pdf';
 file_put_contents($pdfPath, $pdf);
 
 $captionLines = [
-    'MY KASPIN',
+    'KASPINDO',
     'Laporan Transaksi',
     'Periode: ' . $filters['start_date'] . ' - ' . $filters['end_date'],
     'Metode: ' . strtoupper($filters['method']),
@@ -131,4 +131,3 @@ $status = $sent ? '1' : '0';
 $redirect = base_url('bos.php?sent=' . $status);
 header('Location: ' . $redirect);
 exit;
-

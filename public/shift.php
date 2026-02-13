@@ -34,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $success = 'Shift berhasil dibuka. ID: ' . ($shift['shift_id'] ?? '-');
                 if (telegram_can_send('shift')) {
                     $lines = [];
-                    $lines[] = 'MY KASPIN';
+                    $lines[] = 'KASPINDO';
                     $lines[] = 'Shift Dibuka';
                     $lines[] = str_repeat('-', 30);
                     $lines[] = 'Shift ID    : ' . (string) ($shift['shift_id'] ?? '-');
@@ -57,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $success = 'Shift berhasil ditutup.';
                     if (telegram_can_send('shift')) {
                         $lines = [];
-                        $lines[] = 'MY KASPIN';
+                        $lines[] = 'KASPINDO';
                         $lines[] = 'Shift Ditutup';
                         $lines[] = str_repeat('-', 30);
                         $lines[] = 'Shift ID    : ' . (string) ($shift['shift_id'] ?? '-');
@@ -95,7 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $success = $type === 'in' ? 'Cash in berhasil dicatat.' : 'Cash out berhasil dicatat.';
                             if (telegram_can_send('shift')) {
                                 $lines = [];
-                                $lines[] = 'MY KASPIN';
+                                $lines[] = 'KASPINDO';
                                 $lines[] = 'Pergerakan Kas Shift';
                                 $lines[] = str_repeat('-', 30);
                                 $lines[] = 'Shift ID    : ' . $targetShiftCode;

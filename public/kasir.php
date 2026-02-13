@@ -529,7 +529,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $cashierName = $user['name'] ?? 'Kasir';
                     $divider = str_repeat('-', 32);
                     $lines = [];
-                    $lines[] = 'MY KASPIN';
+                    $lines[] = 'KASPINDO';
                     $lines[] = 'Bukti Transaksi Pembayaran';
                     $lines[] = $divider;
                     $lines[] = '';
@@ -610,7 +610,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $lines[] = format_rupiah($total);
                     $lines[] = $divider;
                     $lines[] = '';
-                    $lines[] = 'Instagram : @mykaspin';
+                    $lines[] = 'Instagram : @kaspindo';
                     $lines[] = 'Alamat    : Jl. SMA 1 Kel No. RT 16,';
                     $lines[] = '            Aur, Sarolangun,';
                     $lines[] = '            Kab. Sarolangun, Jambi 37481';
@@ -634,7 +634,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if (!empty($lowStockItems) && telegram_can_send('low_stock')) {
                     $lines = [];
-                    $lines[] = 'MY KASPIN';
+                    $lines[] = 'KASPINDO';
                     $lines[] = 'Peringatan Stok Menipis';
                     $lines[] = str_repeat('-', 32);
                     $lines[] = 'Transaksi     : #' . $transactionId;

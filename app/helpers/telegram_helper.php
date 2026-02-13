@@ -305,7 +305,7 @@ function telegram_build_daily_recap_message(PDO $pdo, string $date): string
     $netSales = max(0.0, $salesTotal - $refundTotal);
 
     $lines = [];
-    $lines[] = 'MY KASPIN';
+    $lines[] = 'KASPINDO';
     $lines[] = 'Rekap Harian';
     $lines[] = str_repeat('-', 30);
     $lines[] = 'Tanggal       : ' . date('d/m/Y', strtotime($date));

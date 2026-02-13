@@ -5,7 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../app/auth/login.php';
 require_once __DIR__ . '/../app/helpers/format_helper.php';
 
-$title = 'Login MY KASPIN';
+$title = 'Login KASPINDO';
 $hideTopbar = true;
 require_once __DIR__ . '/../app/views/layouts/header.php';
 ?>
@@ -16,9 +16,9 @@ require_once __DIR__ . '/../app/views/layouts/header.php';
             <div class="kp-card kp-auth-card p-4 p-md-5">
                     <div class="text-center mb-4">
                         <div class="kp-logo-wrap mx-auto">
-                            <img src="<?php echo e(base_url('assets/images/logo.jpg')); ?>" alt="MY KASPIN">
+                            <img src="<?php echo e(base_url('assets/images/logo.jpg')); ?>" alt="KASPINDO">
                         </div>
-                        <div class="kp-brand-title mt-2">MY KASPIN</div>
+                        <div class="kp-brand-title mt-2">KASPINDO</div>
                         <p class="kp-auth-subtitle">Masuk untuk lanjut ke dashboard kasir.</p>
                     </div>
                     <?php if (!empty($errors)): ?>

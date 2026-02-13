@@ -59,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $errors[] = 'Isi token bot dan ID grup untuk tes koneksi.';
             }
             if (empty($errors)) {
-                $message = "<b>MY KASPIN</b>\n"
+                $message = "<b>KASPINDO</b>\n"
                     . "Tes koneksi Telegram berhasil.\n"
                     . 'Waktu: ' . date('d/m/Y H:i:s');
                 $sent = telegram_send_message_raw($token, $chatId, $message, 'HTML');

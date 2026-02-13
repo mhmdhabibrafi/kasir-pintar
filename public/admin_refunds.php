@@ -149,7 +149,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     if (telegram_can_send('refund')) {
                         $lines = [];
-                        $lines[] = 'MY KASPIN';
+                        $lines[] = 'KASPINDO';
                         $lines[] = 'Refund Tercatat';
                         $lines[] = str_repeat('-', 30);
                         $lines[] = 'Transaksi : #' . $transactionId;

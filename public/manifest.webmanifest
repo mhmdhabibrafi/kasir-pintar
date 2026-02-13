@@ -1,6 +1,6 @@
 ﻿{
-  "name": "MY KASPIN",
-  "short_name": "MY KASPIN",
+  "name": "KASPINDO",
+  "short_name": "KASPINDO",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -19,4 +19,3 @@
     }
   ]
 }
-
