@@ -10,14 +10,21 @@ require_once __DIR__ . '/../app/helpers/refund_helper.php';
 require_once __DIR__ . '/../app/helpers/inventory_helper.php';
 require_once __DIR__ . '/../app/helpers/shift_helper.php';
 require_once __DIR__ . '/../app/helpers/transaction_meta_helper.php';
-require_once __DIR__ . '/../app/helpers/telegram_helper.php';
+require_once __DIR__ . '/../app/helpers/tenant_helper.php';
 require_once __DIR__ . '/../app/models/Transaction.php';
+
+$telegramHelperPath = __DIR__ . '/../app/helpers/telegram_helper.php';
+if (is_file($telegramHelperPath)) {
+    require_once $telegramHelperPath;
+}
 
 require_role(['admin', 'bos']);
 
 $pdo = db();
 $errors = [];
 $success = '';
+$currentUser = current_user();
+$isAdmin = ($currentUser['role'] ?? '') === 'admin';
 
 $today = date('Y-m-d');
 $filters = [
@@ -32,6 +39,8 @@ if (!in_array($filters['method'], ['all', 'cash', 'qris'], true)) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_validate($_POST['csrf_token'] ?? null)) {
         $errors[] = __('error.invalid_request');
+    } elseif (!$isAdmin) {
+        $errors[] = 'Akses terbatas. Hanya admin yang dapat mencatat refund.';
     } else {
         $transactionId = (int) ($_POST['transaction_id'] ?? 0);
         $amount = max(0.0, (float) ($_POST['amount'] ?? 0));
@@ -61,11 +70,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt = $pdo->prepare(
                     'SELECT id, user_id, ' . $totalColumn . ' AS total_amount, created_at
                      FROM transactions
-                     WHERE id = :id
+                     WHERE id = :id' . tenant_where_clause($pdo, 'transactions', 'transactions', 'AND') . '
                      LIMIT 1
                      FOR UPDATE'
                 );
-                $stmt->execute([':id' => $transactionId]);
+                $stmt->execute(tenant_bind([':id' => $transactionId], $pdo));
                 $transaction = $stmt->fetch();
                 if (!$transaction) {
                     $errors[] = __('error.transaction_not_found');
@@ -73,9 +82,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $sumStmt = $pdo->prepare(
                         'SELECT COALESCE(SUM(amount), 0)
                          FROM refunds
-                         WHERE transaction_id = :transaction_id'
+                         WHERE transaction_id = :transaction_id' . tenant_where_clause($pdo, 'refunds', 'refunds', 'AND')
                     );
-                    $sumStmt->execute([':transaction_id' => $transactionId]);
+                    $sumStmt->execute(tenant_bind([':transaction_id' => $transactionId], $pdo));
                     $refundedTotal = (float) $sumStmt->fetchColumn();
 
                     $transactionTotal = (float) ($transaction['total_amount'] ?? 0);
@@ -119,9 +128,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $itemsStmt = $pdo->prepare(
                             'SELECT transaction_items.product_id, transaction_items.' . $qtyColumn . ' AS qty
                              FROM transaction_items
-                             WHERE transaction_items.transaction_id = :id'
+                             WHERE transaction_items.transaction_id = :id' . tenant_where_clause($pdo, 'transaction_items', 'transaction_items', 'AND')
                         );
-                        $itemsStmt->execute([':id' => $transactionId]);
+                        $itemsStmt->execute(tenant_bind([':id' => $transactionId], $pdo));
                         $items = $itemsStmt->fetchAll();
                         $refundEntry['items'] = $items;
 
@@ -147,7 +156,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'reason' => $reason,
                     ]);
 
-                    if (telegram_can_send('refund')) {
+                    if (function_exists('telegram_can_send') && telegram_can_send('refund')) {
                         $lines = [];
                         $lines[] = 'KASPINDO';
                         $lines[] = 'Refund Tercatat';
@@ -159,7 +168,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $lines[] = 'Alasan    : ' . $reason;
                         $lines[] = 'Petugas   : ' . ((string) (current_user()['name'] ?? '-'));
                         $lines[] = 'Waktu     : ' . date('d/m/Y H:i:s');
-                        telegram_send_message('<pre>' . telegram_escape(implode("\n", $lines)) . '</pre>', 'HTML');
+                        if (function_exists('telegram_send_message') && function_exists('telegram_escape')) {
+                            telegram_send_message('<pre>' . telegram_escape(implode("\n", $lines)) . '</pre>', 'HTML');
+                        }
                     }
 
                     $success = __('success.refund_saved');

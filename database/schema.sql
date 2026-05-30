@@ -23,6 +23,7 @@ CREATE TABLE products (
   category_id INT NOT NULL,
   name VARCHAR(150) NOT NULL,
   sku VARCHAR(50) NOT NULL UNIQUE,
+  image_path VARCHAR(255) DEFAULT NULL,
   price DECIMAL(12,2) NOT NULL DEFAULT 0,
   cost_price DECIMAL(12,2) NOT NULL DEFAULT 0,
   is_active TINYINT(1) DEFAULT 1,
@@ -60,3 +61,17 @@ CREATE TABLE payments (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 INSERT INTO roles (name) VALUES ('admin'), ('bos'), ('karyawan');
+
+INSERT INTO users (role_id, name, username, password_hash)
+SELECT
+  r.id,
+  'Administrator',
+  'admin',
+  '$2y$10$t1Qw19uNrXuU42k9GXsPCuklcCXuRvSsmL9/B7H/830YN5Zj5JH5K'
+FROM roles r
+WHERE r.name = 'admin'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM users u
+    WHERE u.username = 'admin'
+  );

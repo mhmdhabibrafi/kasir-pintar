@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/../helpers/tenant_helper.php';
+
 class Transaction
 {
     // Get last transaction within date range (with cashier).
@@ -11,11 +13,11 @@ class Transaction
             'SELECT transactions.id, transactions.created_at, users.name AS cashier
              FROM transactions
              INNER JOIN users ON users.id = transactions.user_id
-             WHERE DATE(transactions.created_at) BETWEEN :start_date AND :end_date
+             WHERE DATE(transactions.created_at) BETWEEN :start_date AND :end_date' . tenant_where_clause($pdo, 'transactions', 'transactions', 'AND') . '
              ORDER BY transactions.created_at DESC
              LIMIT 1'
         );
-        $stmt->execute([':start_date' => $startDate, ':end_date' => $endDate]);
+        $stmt->execute(tenant_bind([':start_date' => $startDate, ':end_date' => $endDate], $pdo));
         $row = $stmt->fetch();
 
         return $row ?: [];
@@ -24,8 +26,8 @@ class Transaction
     // Get transaction count for a specific date.
     public static function getTransactionCountToday(PDO $pdo, string $date): array
     {
-        $stmt = $pdo->prepare('SELECT COUNT(*) AS total FROM transactions WHERE DATE(created_at) = :date');
-        $stmt->execute([':date' => $date]);
+        $stmt = $pdo->prepare('SELECT COUNT(*) AS total FROM transactions WHERE DATE(created_at) = :date' . tenant_where_clause($pdo, 'transactions', 'transactions', 'AND'));
+        $stmt->execute(tenant_bind([':date' => $date], $pdo));
         $count = (int) $stmt->fetchColumn();
 
         return ['count' => $count];
@@ -38,10 +40,10 @@ class Transaction
         $stmt = $pdo->prepare(
             'SELECT method, COALESCE(SUM(amount), 0) AS total
              FROM payments
-             WHERE DATE(created_at) BETWEEN :start_date AND :end_date
+             WHERE DATE(created_at) BETWEEN :start_date AND :end_date' . tenant_where_clause($pdo, 'payments', 'payments', 'AND') . '
              GROUP BY method'
         );
-        $stmt->execute([':start_date' => $startDate, ':end_date' => $endDate]);
+        $stmt->execute(tenant_bind([':start_date' => $startDate, ':end_date' => $endDate], $pdo));
         foreach ($stmt->fetchAll() as $row) {
             $method = (string) $row['method'];
             if (isset($totals[$method])) {
@@ -67,9 +69,9 @@ class Transaction
         $stmt = $pdo->prepare(
             'SELECT MAX(created_at) AS last_time
              FROM transactions
-             WHERE DATE(created_at) BETWEEN :start_date AND :end_date'
+             WHERE DATE(created_at) BETWEEN :start_date AND :end_date' . tenant_where_clause($pdo, 'transactions', 'transactions', 'AND')
         );
-        $stmt->execute([':start_date' => $startDate, ':end_date' => $endDate]);
+        $stmt->execute(tenant_bind([':start_date' => $startDate, ':end_date' => $endDate], $pdo));
         $lastTime = $stmt->fetchColumn();
 
         return ['last_time' => $lastTime ?: null];
@@ -82,9 +84,9 @@ class Transaction
             'SELECT COALESCE(SUM(transaction_items.' . $qtyColumn . '), 0)
              FROM transaction_items
              INNER JOIN transactions ON transactions.id = transaction_items.transaction_id
-             WHERE DATE(transactions.created_at) BETWEEN :start_date AND :end_date'
+             WHERE DATE(transactions.created_at) BETWEEN :start_date AND :end_date' . tenant_where_clause($pdo, 'transactions', 'transactions', 'AND')
         );
-        $stmt->execute([':start_date' => $startDate, ':end_date' => $endDate]);
+        $stmt->execute(tenant_bind([':start_date' => $startDate, ':end_date' => $endDate], $pdo));
         return (int) $stmt->fetchColumn();
     }
 
@@ -94,11 +96,11 @@ class Transaction
         $today = $date;
         $yesterday = date('Y-m-d', strtotime($date . ' -1 day'));
 
-        $stmt = $pdo->prepare('SELECT COALESCE(SUM(amount), 0) FROM payments WHERE DATE(created_at) = :date');
-        $stmt->execute([':date' => $today]);
+        $stmt = $pdo->prepare('SELECT COALESCE(SUM(amount), 0) FROM payments WHERE DATE(created_at) = :date' . tenant_where_clause($pdo, 'payments', 'payments', 'AND'));
+        $stmt->execute(tenant_bind([':date' => $today], $pdo));
         $todayTotal = (float) $stmt->fetchColumn();
 
-        $stmt->execute([':date' => $yesterday]);
+        $stmt->execute(tenant_bind([':date' => $yesterday], $pdo));
         $yesterdayTotal = (float) $stmt->fetchColumn();
 
         $diff = $todayTotal - $yesterdayTotal;
@@ -126,12 +128,12 @@ class Transaction
                 FROM transaction_items
                 INNER JOIN transactions ON transactions.id = transaction_items.transaction_id
                 INNER JOIN products ON products.id = transaction_items.product_id
-                WHERE DATE(transactions.created_at) BETWEEN :start_date AND :end_date
+                WHERE DATE(transactions.created_at) BETWEEN :start_date AND :end_date' . tenant_where_clause($pdo, 'transactions', 'transactions', 'AND') . '
                 GROUP BY products.id, products.name
                 ORDER BY total_qty DESC
                 LIMIT ' . (int) $limit;
         $stmt = $pdo->prepare($sql);
-        $stmt->execute([':start_date' => $startDate, ':end_date' => $endDate]);
+        $stmt->execute(tenant_bind([':start_date' => $startDate, ':end_date' => $endDate], $pdo));
         return $stmt->fetchAll();
     }
 
@@ -142,10 +144,10 @@ class Transaction
         $stmt = $pdo->prepare(
             'SELECT method, COALESCE(SUM(amount), 0) AS total
              FROM payments
-             WHERE DATE(created_at) BETWEEN :start_date AND :end_date
+             WHERE DATE(created_at) BETWEEN :start_date AND :end_date' . tenant_where_clause($pdo, 'payments', 'payments', 'AND') . '
              GROUP BY method'
         );
-        $stmt->execute([':start_date' => $startDate, ':end_date' => $endDate]);
+        $stmt->execute(tenant_bind([':start_date' => $startDate, ':end_date' => $endDate], $pdo));
         foreach ($stmt->fetchAll() as $row) {
             $method = (string) $row['method'];
             if (isset($summary[$method])) {
@@ -170,10 +172,10 @@ class Transaction
         $stmt = $pdo->prepare(
             'SELECT DATE(created_at) AS day, COALESCE(SUM(amount), 0) AS total
              FROM payments
-             WHERE DATE(created_at) BETWEEN :start_date AND :end_date
+             WHERE DATE(created_at) BETWEEN :start_date AND :end_date' . tenant_where_clause($pdo, 'payments', 'payments', 'AND') . '
              GROUP BY DATE(created_at)'
         );
-        $stmt->execute([':start_date' => $startDate, ':end_date' => $endDate]);
+        $stmt->execute(tenant_bind([':start_date' => $startDate, ':end_date' => $endDate], $pdo));
         foreach ($stmt->fetchAll() as $row) {
             $day = (string) $row['day'];
             if (isset($range[$day])) {
@@ -257,7 +259,11 @@ class Transaction
 
     public static function count(PDO $pdo): int
     {
-        $stmt = $pdo->query('SELECT COUNT(*) FROM transactions');
+        $where = tenant_where_clause($pdo, 'transactions', 'transactions');
+        $stmt = $where !== '' ? $pdo->prepare('SELECT COUNT(*) FROM transactions' . $where) : $pdo->query('SELECT COUNT(*) FROM transactions');
+        if ($where !== '' && $stmt instanceof PDOStatement) {
+            $stmt->execute(tenant_bind([], $pdo));
+        }
         return (int) $stmt->fetchColumn();
     }
 
@@ -277,6 +283,12 @@ class Transaction
             $columns[] = $noteColumn;
             $placeholders[] = ':note';
             $params[':note'] = ($note !== null && $note !== '') ? $note : null;
+        }
+
+        if (tenant_table_has_column($pdo, 'transactions', 'store_id')) {
+            $columns[] = 'store_id';
+            $placeholders[] = ':store_id';
+            $params[':store_id'] = tenant_active_store_id($pdo);
         }
 
         $sql = 'INSERT INTO transactions (' . implode(', ', $columns) . ') VALUES (' . implode(', ', $placeholders) . ')';
@@ -306,6 +318,12 @@ class Transaction
         $placeholders = [':transaction_id', ':product_id', ':quantity', ':price'];
         if ($subtotalColumn) {
             $placeholders[] = ':subtotal';
+        }
+
+        if (tenant_table_has_column($pdo, 'transaction_items', 'store_id')) {
+            $columns[] = 'store_id';
+            $placeholders[] = ':store_id';
+            $params[':store_id'] = tenant_active_store_id($pdo);
         }
 
         $sql = 'INSERT INTO transaction_items (' . implode(', ', $columns) . ') VALUES (' . implode(', ', $placeholders) . ')';

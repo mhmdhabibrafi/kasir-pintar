@@ -29,6 +29,11 @@ $areaPath = implode(' ', $areaPoints);
 $revenueComparison = $stats['revenue_comparison'] ?? ['today' => 0, 'yesterday' => 0, 'diff' => 0, 'pct' => 0, 'trend' => 'up'];
 $topProducts = $stats['top_products'] ?? [];
 $hasTransactions = $stats['has_transactions'] ?? false;
+$operationsSnapshot = $operationsSnapshot ?? [];
+$opsProfile = $operationsSnapshot['profile_completion'] ?? ['percent' => 0, 'completed' => 0, 'total' => 0];
+$opsLowStock = $operationsSnapshot['low_stock_items'] ?? [];
+$opsLowStockPreview = array_slice($opsLowStock, 0, 3);
+$opsBusinessHours = trim((string) ($operationsSnapshot['business_hours'] ?? ''));
 ?>
 
 <?php if (!empty($errors)): ?>
@@ -58,78 +63,75 @@ $hasTransactions = $stats['has_transactions'] ?? false;
     </div>
 </div>
 
-<div class="kp-card p-4 mb-4 bg-white border border-slate-200 rounded-2xl shadow-sm">
-    <div class="kp-grid kp-grid-3">
-        <div class="kp-card-flat p-3 bg-white border border-slate-200 rounded-2xl shadow-sm">
-            <div class="kp-stat-card">
-                <span class="kp-stat-icon">
-                    <span class="material-icons-outlined">payments</span>
-                </span>
-                <div>
-                    <div class="kp-kpi-label">Revenue Periode</div>
-                    <div class="kp-kpi-value"><?php echo e(format_rupiah((float) ($stats['range_sales'] ?? 0))); ?></div>
-                </div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+    <!-- Revenue Card -->
+    <div class="kp-card p-6 border-l-4 border-l-emerald-500">
+        <div class="flex items-center justify-between mb-4">
+            <div class="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+                <span class="material-icons-outlined">payments</span>
             </div>
+            <span class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg uppercase tracking-wider">Revenue</span>
         </div>
-        <div class="kp-card-flat p-3 bg-white border border-slate-200 rounded-2xl shadow-sm">
-            <div class="kp-stat-card">
-                <span class="kp-stat-icon">
-                    <span class="material-icons-outlined">local_cafe</span>
-                </span>
-                <div>
-                    <div class="kp-kpi-label">Cup Terjual (Periode)</div>
-                    <div class="kp-kpi-value"><?php echo e((string) ($stats['cups_range'] ?? 0)); ?></div>
-                </div>
-            </div>
+        <p class="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Total Penjualan</p>
+        <h3 class="text-2xl font-bold text-slate-900"><?php echo e(format_rupiah((float) ($stats['range_sales'] ?? 0))); ?></h3>
+        <div class="mt-4 pt-4 border-top border-slate-100 flex items-center justify-between">
+            <span class="text-xs text-slate-500">Bulan ini</span>
+            <span class="text-xs font-bold text-slate-900"><?php echo e(format_rupiah((float) $stats['month_sales'])); ?></span>
         </div>
-        <div class="kp-card-flat p-3 bg-white border border-slate-200 rounded-2xl shadow-sm">
-            <div class="kp-stat-card">
-                <span class="kp-stat-icon">
-                    <span class="material-icons-outlined">calendar_month</span>
-                </span>
-                <div>
-                    <div class="kp-kpi-label">Monthly Revenue</div>
-                    <div class="kp-kpi-value"><?php echo e(format_rupiah((float) $stats['month_sales'])); ?></div>
-                </div>
+    </div>
+
+    <!-- Transaction Card -->
+    <div class="kp-card p-6 border-l-4 border-l-blue-500">
+        <div class="flex items-center justify-between mb-4">
+            <div class="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600">
+                <span class="material-icons-outlined">receipt_long</span>
             </div>
+            <span class="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg uppercase tracking-wider">Volume</span>
         </div>
-        <div class="kp-card-flat p-3 bg-white border border-slate-200 rounded-2xl shadow-sm">
-            <div class="kp-stat-card">
-                <span class="kp-stat-icon">
-                    <span class="material-icons-outlined">receipt_long</span>
-                </span>
-                <div>
-                    <div class="kp-kpi-label">Transaksi Hari Ini</div>
-                    <div class="kp-kpi-value"><?php echo e((string) $stats['transactions_today']); ?></div>
-                </div>
-            </div>
+        <p class="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Transaksi Hari Ini</p>
+        <h3 class="text-2xl font-bold text-slate-900"><?php echo e((string) $stats['transactions_today']); ?> <span class="text-sm font-medium text-slate-400">Nota</span></h3>
+        <div class="mt-4 pt-4 border-top border-slate-100 flex items-center justify-between">
+            <span class="text-xs text-slate-500">Target Harian</span>
+            <span class="text-xs font-bold text-slate-900">50 Nota</span>
         </div>
-        <div class="kp-card-flat p-3 bg-white border border-slate-200 rounded-2xl shadow-sm">
-            <div class="kp-stat-card">
-                <span class="kp-stat-icon">
-                    <span class="material-icons-outlined">show_chart</span>
-                </span>
-                <div>
-                    <div class="kp-kpi-label">Perbandingan Revenue</div>
-                    <div class="kp-kpi-value"><?php echo e(format_rupiah((float) $revenueComparison['today'])); ?></div>
-                    <div class="kp-kpi-meta">
-                        <?php echo e(($revenueComparison['trend'] === 'up') ? 'Naik' : 'Turun'); ?>
-                        <?php echo e(number_format((float) abs($revenueComparison['pct']), 1)); ?>%
-                    </div>
-                </div>
+    </div>
+
+    <!-- Cup Card -->
+    <div class="kp-card p-6 border-l-4 border-l-orange-500">
+        <div class="flex items-center justify-between mb-4">
+            <div class="w-12 h-12 rounded-2xl bg-orange-50 flex items-center justify-center text-orange-600">
+                <span class="material-icons-outlined">local_cafe</span>
             </div>
+            <span class="text-[10px] font-bold text-orange-600 bg-orange-50 px-2 py-1 rounded-lg uppercase tracking-wider">Product</span>
         </div>
-        <div class="kp-card-flat p-3 bg-white border border-slate-200 rounded-2xl shadow-sm">
-            <div class="kp-stat-card">
-                <span class="kp-stat-icon">
-                    <span class="material-icons-outlined">qr_code_2</span>
-                </span>
-                <div>
-                    <div class="kp-kpi-label">Cash vs QRIS</div>
-                    <div class="kp-kpi-meta">Cash: <?php echo e(format_rupiah((float) ($summary['cash'] ?? 0))); ?></div>
-                    <div class="kp-kpi-meta">QRIS: <?php echo e(format_rupiah((float) ($summary['qris'] ?? 0))); ?></div>
-                </div>
+        <p class="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Cup Terjual</p>
+        <h3 class="text-2xl font-bold text-slate-900"><?php echo e((string) ($stats['cups_range'] ?? 0)); ?> <span class="text-sm font-medium text-slate-400">Cup</span></h3>
+        <div class="mt-4 pt-4 border-top border-slate-100 flex items-center justify-between">
+            <span class="text-xs text-slate-500">Periode terpilih</span>
+            <span class="material-icons-outlined text-orange-500 text-sm">trending_up</span>
+        </div>
+    </div>
+
+    <!-- Comparison Card -->
+    <div class="kp-card p-6 border-l-4 border-l-indigo-500">
+        <div class="flex items-center justify-between mb-4">
+            <div class="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600">
+                <span class="material-icons-outlined">insights</span>
             </div>
+            <span class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg uppercase tracking-wider">Growth</span>
+        </div>
+        <p class="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Trend vs Kemarin</p>
+        <div class="flex items-center gap-2">
+            <h3 class="text-2xl font-bold text-slate-900"><?php echo e(number_format((float) abs($revenueComparison['pct']), 1)); ?>%</h3>
+            <span class="flex items-center <?php echo ($revenueComparison['trend'] === 'up') ? 'text-emerald-500' : 'text-red-500'; ?> font-bold text-sm">
+                <span class="material-icons-outlined text-sm"><?php echo ($revenueComparison['trend'] === 'up') ? 'north_east' : 'south_east'; ?></span>
+            </span>
+        </div>
+        <div class="mt-4 pt-4 border-top border-slate-100 flex items-center justify-between">
+            <span class="text-xs text-slate-500">Status</span>
+            <span class="text-xs font-bold <?php echo ($revenueComparison['trend'] === 'up') ? 'text-emerald-600' : 'text-red-600'; ?> uppercase">
+                <?php echo e(($revenueComparison['trend'] === 'up') ? 'Meningkat' : 'Menurun'); ?>
+            </span>
         </div>
     </div>
 </div>
@@ -139,6 +141,56 @@ $hasTransactions = $stats['has_transactions'] ?? false;
         Belum ada transaksi.
     </div>
 <?php endif; ?>
+
+<div class="kp-page-header">
+    <div>
+        <h3 class="kp-section-title">Owner Watchlist</h3>
+        <p class="kp-section-subtitle">Lihat kesiapan toko, stok menipis, dan kondisi operasional dari sudut pandang owner.</p>
+    </div>
+</div>
+
+<div class="kp-grid kp-grid-4 mb-4">
+    <div class="kp-card-flat p-3 bg-white border border-slate-200 rounded-2xl shadow-sm">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="fw-semibold">Profil Toko</div>
+            <span class="material-icons-outlined">domain</span>
+        </div>
+        <div class="kp-kpi-value"><?php echo e((string) ($opsProfile['percent'] ?? 0)); ?>%</div>
+        <div class="kp-muted small mt-1"><?php echo e((string) ($opsProfile['completed'] ?? 0)); ?> dari <?php echo e((string) ($opsProfile['total'] ?? 0)); ?> bagian sudah terisi.</div>
+        <div class="d-flex flex-wrap gap-2 mt-2">
+            <?php if (!empty($operationsSnapshot['profile_is_demo'])): ?>
+                <span class="kp-alert-badge active">Masih profil demo</span>
+            <?php endif; ?>
+            <?php if ($opsBusinessHours !== ''): ?>
+                <span class="badge text-bg-light"><?php echo e($opsBusinessHours); ?></span>
+            <?php endif; ?>
+        </div>
+        <a class="btn kp-btn-ghost btn-sm mt-3" href="<?php echo e(base_url('admin_store.php')); ?>">
+            <span class="material-icons-outlined">edit</span>
+            Lihat Info Toko
+        </a>
+    </div>
+
+    <div class="kp-card-flat p-3 bg-white border border-slate-200 rounded-2xl shadow-sm">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="fw-semibold">Stok Menipis</div>
+            <span class="material-icons-outlined">inventory_2</span>
+        </div>
+        <div class="kp-kpi-value"><?php echo e((string) count($opsLowStock)); ?></div>
+        <div class="kp-muted small mt-1">
+            <?php if (!empty($opsLowStockPreview)): ?>
+                <?php echo e(implode(', ', array_map(static fn (array $item): string => (string) ($item['name'] ?? '-'), $opsLowStockPreview))); ?>
+            <?php else: ?>
+                Tidak ada stok yang berada di bawah batas minimum.
+            <?php endif; ?>
+        </div>
+        <a class="btn kp-btn-ghost btn-sm mt-3" href="<?php echo e(base_url('admin_inventory.php')); ?>">
+            <span class="material-icons-outlined">visibility</span>
+            Cek Stok
+        </a>
+    </div>
+
+</div>
 
 <div class="kp-grid kp-grid-2 mb-4">
     <div class="kp-card p-4 bg-white border border-slate-200 rounded-2xl shadow-sm">
@@ -262,16 +314,6 @@ $hasTransactions = $stats['has_transactions'] ?? false;
             <span class="material-icons-outlined">table_view</span>
             Export CSV
         </a>
-        <form method="POST" action="<?php echo e(base_url('bos_report_send.php')); ?>">
-            <?php echo csrf_field(); ?>
-            <input type="hidden" name="start_date" value="<?php echo e($filters['start_date']); ?>">
-            <input type="hidden" name="end_date" value="<?php echo e($filters['end_date']); ?>">
-            <input type="hidden" name="method" value="<?php echo e($filters['method']); ?>">
-            <button class="btn kp-btn-primary" type="submit">
-                <span class="material-icons-outlined">send</span>
-                Kirim ke Telegram
-            </button>
-        </form>
     </div>
 
     <div class="kp-grid kp-grid-3 mb-3">

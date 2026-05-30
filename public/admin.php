@@ -2,234 +2,275 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/../app/config/database.php';
 require_once __DIR__ . '/../app/auth/middleware.php';
 require_once __DIR__ . '/../app/helpers/format_helper.php';
-require_once __DIR__ . '/../app/helpers/i18n_helper.php';
+require_once __DIR__ . '/../app/helpers/tenant_helper.php';
 require_once __DIR__ . '/../app/helpers/refund_helper.php';
-require_once __DIR__ . '/../app/helpers/cash_report_helper.php';
-require_once __DIR__ . '/../app/models/User.php';
-require_once __DIR__ . '/../app/models/Product.php';
+require_once __DIR__ . '/../app/helpers/store_operations_helper.php';
+require_once __DIR__ . '/../app/helpers/inventory_helper.php';
 require_once __DIR__ . '/../app/models/Transaction.php';
-require_once __DIR__ . '/../app/models/Category.php';
-require_once __DIR__ . '/../app/config/database.php';
+require_once __DIR__ . '/../app/models/Product.php';
+require_once __DIR__ . '/../app/models/User.php';
+require_once __DIR__ . '/../app/models/Customer.php';
 
 require_role(['admin', 'bos']);
 
+$currentUser = current_user() ?? [];
+if (($currentUser['role'] ?? '') === 'bos') {
+    header('Location: bos.php');
+    exit;
+}
+
 $pdo = db();
+$errors = [];
 $today = date('Y-m-d');
+
 $normalizeDate = static function (?string $value, string $fallback): string {
-    if ($value === null || $value === '') {
+    $raw = trim((string) $value);
+    if ($raw === '') {
         return $fallback;
     }
-    $parsed = DateTime::createFromFormat('Y-m-d', $value);
-    if (!$parsed || $parsed->format('Y-m-d') !== $value) {
+
+    $date = DateTimeImmutable::createFromFormat('Y-m-d', $raw);
+    if (!$date || $date->format('Y-m-d') !== $raw) {
         return $fallback;
     }
-    return $value;
+
+    return $raw;
 };
+
 $filters = [
     'start_date' => $normalizeDate($_GET['start_date'] ?? null, $today),
     'end_date' => $normalizeDate($_GET['end_date'] ?? null, $today),
 ];
+
 if ($filters['start_date'] > $filters['end_date']) {
     [$filters['start_date'], $filters['end_date']] = [$filters['end_date'], $filters['start_date']];
 }
-$salesStmt = $pdo->query('SELECT COALESCE(SUM(amount), 0) FROM payments');
-$totalSales = (float) $salesStmt->fetchColumn();
 
-$todayStmt = $pdo->prepare('SELECT COALESCE(SUM(amount), 0) FROM payments WHERE DATE(created_at) = :today');
-$todayStmt->execute([':today' => $today]);
-$todaySales = (float) $todayStmt->fetchColumn();
-
-$periodSalesStmt = $pdo->prepare(
-    'SELECT COALESCE(SUM(amount), 0) FROM payments WHERE DATE(created_at) BETWEEN :start_date AND :end_date'
-);
-$periodSalesStmt->execute([':start_date' => $filters['start_date'], ':end_date' => $filters['end_date']]);
-$periodSales = (float) $periodSalesStmt->fetchColumn();
-
-$refundAll = 0.0;
-$refundToday = refund_sum_by_date_range($today, $today);
-$refundPeriod = refund_sum_by_date_range($filters['start_date'], $filters['end_date']);
-foreach (refund_list() as $refund) {
-    $refundAll += (float) ($refund['amount'] ?? 0);
-}
-$totalSales = max(0.0, $totalSales - $refundAll);
-$todaySales = max(0.0, $todaySales - $refundToday);
-$periodSales = max(0.0, $periodSales - $refundPeriod);
-
-$qtyColumn = Transaction::itemQuantityColumn($pdo) ?? 'quantity';
-$cupsStmt = $pdo->prepare(
-    'SELECT COALESCE(SUM(transaction_items.' . $qtyColumn . '), 0)
-     FROM transaction_items
-     INNER JOIN transactions ON transactions.id = transaction_items.transaction_id
-     WHERE DATE(transactions.created_at) = :today'
-);
-$cupsStmt->execute([':today' => $today]);
-$todayCups = (int) $cupsStmt->fetchColumn();
-
-$paymentSummary = Transaction::getPaymentSummary($pdo, $filters['start_date'], $filters['end_date']);
-$revenueComparison = Transaction::getRevenueComparison($pdo, $filters['end_date']);
-$topProducts = Transaction::getTopProducts($pdo, $filters['start_date'], $filters['end_date'], 5);
-$rangeCups = Transaction::getTotalCupByDateRange($pdo, $filters['start_date'], $filters['end_date']);
-$lastTransaction = Transaction::getLastTransaction($pdo, $filters['start_date'], $filters['end_date']);
-$transactionCount = Transaction::getTransactionCountToday($pdo, $filters['end_date']);
-$paymentPercentage = Transaction::getPaymentPercentage($pdo, $filters['start_date'], $filters['end_date']);
-$lastTransactionTime = Transaction::getLastTransactionTime($pdo, $filters['start_date'], $filters['end_date']);
-
-$refundCash = refund_sum_by_date_range($filters['start_date'], $filters['end_date'], 'cash');
-$refundQris = refund_sum_by_date_range($filters['start_date'], $filters['end_date'], 'qris');
-$paymentSummary['cash'] = max(0.0, (float) $paymentSummary['cash'] - $refundCash);
-$paymentSummary['qris'] = max(0.0, (float) $paymentSummary['qris'] - $refundQris);
-$paymentPercentage['cash_total'] = max(0.0, (float) $paymentPercentage['cash_total'] - $refundCash);
-$paymentPercentage['qris_total'] = max(0.0, (float) $paymentPercentage['qris_total'] - $refundQris);
-$grandTotalPct = (float) ($paymentPercentage['cash_total'] + $paymentPercentage['qris_total']);
-if ($grandTotalPct > 0) {
-    $paymentPercentage['cash_pct'] = ($paymentPercentage['cash_total'] / $grandTotalPct) * 100;
-    $paymentPercentage['qris_pct'] = 100 - $paymentPercentage['cash_pct'];
-} else {
-    $paymentPercentage['cash_pct'] = 0.0;
-    $paymentPercentage['qris_pct'] = 0.0;
-}
-
-$cashDailyRecap = cash_report_daily($filters['start_date'], $filters['end_date']);
-$cashDailyTotals = cash_report_daily_totals($cashDailyRecap);
-$cashNet = (float) ($cashDailyTotals['cash_sales'] ?? 0)
-    - (float) ($cashDailyTotals['refund_cash'] ?? 0)
-    + (float) ($cashDailyTotals['cash_in'] ?? 0)
-    - (float) ($cashDailyTotals['cash_out'] ?? 0);
-$qrisNet = (float) ($cashDailyTotals['qris_sales'] ?? 0) - (float) ($cashDailyTotals['refund_qris'] ?? 0);
-
-$todayRefund = refund_sum_by_date_range($filters['end_date'], $filters['end_date']);
-$yesterday = date('Y-m-d', strtotime($filters['end_date'] . ' -1 day'));
-$yesterdayRefund = refund_sum_by_date_range($yesterday, $yesterday);
-$revenueComparison['today'] = max(0.0, (float) $revenueComparison['today'] - $todayRefund);
-$revenueComparison['yesterday'] = max(0.0, (float) $revenueComparison['yesterday'] - $yesterdayRefund);
-$revenueComparison['diff'] = $revenueComparison['today'] - $revenueComparison['yesterday'];
-$revenueComparison['pct'] = $revenueComparison['yesterday'] > 0
-    ? ($revenueComparison['diff'] / $revenueComparison['yesterday']) * 100
-    : ($revenueComparison['today'] > 0 ? 100.0 : 0.0);
-$revenueComparison['trend'] = $revenueComparison['diff'] >= 0 ? 'up' : 'down';
-
-$rangeCountStmt = $pdo->prepare(
-    'SELECT COUNT(*) FROM transactions WHERE DATE(created_at) BETWEEN :start_date AND :end_date'
-);
-$rangeCountStmt->execute([':start_date' => $filters['start_date'], ':end_date' => $filters['end_date']]);
-$hasTransactions = (int) $rangeCountStmt->fetchColumn() > 0;
-
-$hoursThreshold = 2;
-$alertNoTransaction = true;
-if (!empty($lastTransactionTime['last_time'])) {
-    $lastTime = new DateTime((string) $lastTransactionTime['last_time']);
-    $now = new DateTime('now');
-    $hoursDiff = ($now->getTimestamp() - $lastTime->getTimestamp()) / 3600;
-    $alertNoTransaction = $hoursDiff >= $hoursThreshold;
-}
-$alerts = [
-    'no_transaction_over_hours' => $alertNoTransaction,
-    'qris_zero_transaction' => ((float) $paymentPercentage['qris_total']) <= 0,
-    'cash_zero_transaction' => ((float) $paymentPercentage['cash_total']) <= 0,
-];
-$activityPanel = [
-    'last_time' => $lastTransaction['created_at'] ?? null,
-    'last_cashier' => $lastTransaction['cashier'] ?? null,
-    'transaction_count_today' => (int) ($transactionCount['count'] ?? 0),
-];
-$systemStatus = [
-    'database_connected' => $pdo instanceof PDO,
-    'last_transaction_time' => $lastTransactionTime['last_time'] ?? null,
-];
-
-$days = [];
-for ($i = 6; $i >= 0; $i--) {
-    $date = date('Y-m-d', strtotime('-' . $i . ' days'));
-    $days[$date] = [
-        'label' => date('d/m', strtotime($date)),
-        'transactions' => 0,
-        'revenue' => 0,
-    ];
-}
-
-$startDate = array_key_first($days);
-
-$trxStmt = $pdo->prepare(
-    'SELECT DATE(created_at) AS day, COUNT(*) AS total
-     FROM transactions
-     WHERE DATE(created_at) >= :start_date
-     GROUP BY DATE(created_at)'
-);
-$trxStmt->execute([':start_date' => $startDate]);
-foreach ($trxStmt->fetchAll() as $row) {
-    $day = $row['day'];
-    if (isset($days[$day])) {
-        $days[$day]['transactions'] = (int) $row['total'];
-    }
-}
-
-$revStmt = $pdo->prepare(
-    'SELECT DATE(created_at) AS day, COALESCE(SUM(amount), 0) AS total
-     FROM payments
-     WHERE DATE(created_at) >= :start_date
-     GROUP BY DATE(created_at)'
-);
-$revStmt->execute([':start_date' => $startDate]);
-foreach ($revStmt->fetchAll() as $row) {
-    $day = $row['day'];
-    if (isset($days[$day])) {
-        $days[$day]['revenue'] = (float) $row['total'];
-    }
-}
-
-$refundByDate = refund_group_by_date($startDate, $today);
-foreach ($refundByDate as $day => $amount) {
-    if (isset($days[$day])) {
-        $days[$day]['revenue'] = max(0.0, $days[$day]['revenue'] - (float) $amount);
-    }
-}
-
-$chartTransactions = [];
-$chartRevenue = [];
-foreach ($days as $day) {
-    $chartTransactions[] = ['label' => $day['label'], 'value' => $day['transactions']];
-    $chartRevenue[] = ['label' => $day['label'], 'value' => $day['revenue']];
-}
-
-$chartStart = date('Y-m-d', strtotime($filters['end_date'] . ' -6 days'));
-$revenueSeries = Transaction::getRevenueSeries($pdo, $chartStart, $filters['end_date']);
-$revenueSeries = $chartRevenue;
-
-$stats = [
-    'transactions' => Transaction::count($pdo),
-    'total_sales' => $totalSales,
-    'today_sales' => $todaySales,
-    'period_sales' => $periodSales,
-    'today_cups' => $todayCups,
-    'range_cups' => $rangeCups,
-    'payment_summary' => $paymentSummary,
-    'chart_transactions' => $chartTransactions,
-    'chart_revenue' => $chartRevenue,
-    'revenue_series' => $revenueSeries,
-    'revenue_comparison' => $revenueComparison,
-    'top_products' => $topProducts,
+$dashboard = [
     'filters' => $filters,
-    'has_transactions' => $hasTransactions,
-    'activity_panel' => $activityPanel,
-    'alerts' => $alerts,
-    'payment_percentage' => $paymentPercentage,
-    'cash_balance_summary' => [
-        'cash_in' => (float) ($cashDailyTotals['cash_in'] ?? 0),
-        'cash_out' => (float) ($cashDailyTotals['cash_out'] ?? 0),
-        'cash_sales' => (float) ($cashDailyTotals['cash_sales'] ?? 0),
-        'refund_cash' => (float) ($cashDailyTotals['refund_cash'] ?? 0),
-        'qris_sales' => (float) ($cashDailyTotals['qris_sales'] ?? 0),
-        'refund_qris' => (float) ($cashDailyTotals['refund_qris'] ?? 0),
-        'net_cash' => $cashNet,
-        'net_qris' => $qrisNet,
+    'period_days' => 1,
+    'transactions_count' => 0,
+    'today_transactions' => 0,
+    'gross_sales' => 0.0,
+    'refund_total' => 0.0,
+    'net_sales' => 0.0,
+    'gross_profit' => 0.0,
+    'average_ticket' => 0.0,
+    'daily_average' => 0.0,
+    'product_total' => 0,
+    'product_active' => 0,
+    'product_inactive' => 0,
+    'staff_total' => 0,
+    'staff_active' => 0,
+    'member_total' => 0,
+    'member_active' => 0,
+    'low_stock_count' => 0,
+    'low_stock_items' => [],
+    'payment_percentage' => [
+        'cash_total' => 0.0,
+        'qris_total' => 0.0,
+        'cash_pct' => 0.0,
+        'qris_pct' => 0.0,
     ],
-    'system_status' => $systemStatus,
-    'users' => User::count($pdo),
-    'products' => Product::count($pdo),
-    'categories' => (int) $pdo->query('SELECT COUNT(*) FROM categories')->fetchColumn(),
+    'revenue_series' => [],
+    'revenue_comparison' => ['today' => 0.0, 'yesterday' => 0.0, 'diff' => 0.0, 'pct' => 0.0, 'trend' => 'up'],
+    'top_products' => [],
+    'last_transaction' => null,
+    'operations' => [],
+    'attention_items' => [],
 ];
 
-$title = __('admin.page_title');
+try {
+    $periodStart = new DateTimeImmutable($filters['start_date']);
+    $periodEnd = new DateTimeImmutable($filters['end_date']);
+    $periodDays = ((int) $periodStart->diff($periodEnd)->days) + 1;
+    $dashboard['period_days'] = max(1, $periodDays);
+
+    $products = Product::allForAdmin($pdo);
+    $customers = Customer::all($pdo);
+    $users = array_values(array_filter(
+        User::all($pdo),
+        static fn (array $row): bool => (string) ($row['role_name'] ?? '') !== 'superadmin'
+    ));
+    $operationsSnapshot = store_operations_snapshot($pdo, is_array($currentUser) ? $currentUser : [], $products);
+    $lowStockItems = $operationsSnapshot['low_stock_items'] ?? [];
+
+    $summary = Transaction::getPaymentSummary($pdo, $filters['start_date'], $filters['end_date']);
+    $refundTotal = refund_sum_by_date_range($filters['start_date'], $filters['end_date']);
+    $refundCash = refund_sum_by_date_range($filters['start_date'], $filters['end_date'], 'cash');
+    $refundQris = refund_sum_by_date_range($filters['start_date'], $filters['end_date'], 'qris');
+
+    $netCash = max(0.0, (float) $summary['cash'] - $refundCash);
+    $netQris = max(0.0, (float) $summary['qris'] - $refundQris);
+    $netSales = $netCash + $netQris;
+    $paymentTotal = max(1.0, $netCash + $netQris);
+
+    $transactionCountStmt = $pdo->prepare(
+        'SELECT COUNT(*) FROM transactions WHERE DATE(created_at) BETWEEN :start_date AND :end_date'
+        . tenant_where_clause($pdo, 'transactions', 'transactions', 'AND')
+    );
+    $transactionCountStmt->execute(tenant_bind([
+        ':start_date' => $filters['start_date'],
+        ':end_date' => $filters['end_date'],
+    ], $pdo));
+    $transactionCount = (int) $transactionCountStmt->fetchColumn();
+
+    $todayTransactionCount = Transaction::getTransactionCountToday($pdo, $today);
+    $lastTransaction = Transaction::getLastTransaction($pdo, $filters['start_date'], $filters['end_date']);
+
+    $qtyColumn = Transaction::itemQuantityColumn($pdo) ?? 'quantity';
+    $costColumn = Product::costColumn($pdo);
+    $costExpression = $costColumn ? 'COALESCE(products.' . $costColumn . ', 0)' : '0';
+    $profitTenant = tenant_multi_where_clause($pdo, [
+        'transactions' => 'transactions',
+        'transaction_items' => 'transaction_items',
+        'products' => 'products',
+    ]);
+    $profitStmt = $pdo->prepare(
+        'SELECT
+            COALESCE(SUM(transaction_items.price * transaction_items.' . $qtyColumn . '), 0) AS gross_sales,
+            COALESCE(SUM(' . $costExpression . ' * transaction_items.' . $qtyColumn . '), 0) AS total_cost
+         FROM transaction_items
+         INNER JOIN transactions ON transactions.id = transaction_items.transaction_id
+         INNER JOIN products ON products.id = transaction_items.product_id
+         WHERE DATE(transactions.created_at) BETWEEN :start_date AND :end_date'
+         . $profitTenant['sql']
+    );
+    $profitStmt->execute([
+        ':start_date' => $filters['start_date'],
+        ':end_date' => $filters['end_date'],
+    ] + $profitTenant['params']);
+    $profitRow = $profitStmt->fetch() ?: ['gross_sales' => 0, 'total_cost' => 0];
+    $grossSales = (float) ($profitRow['gross_sales'] ?? 0);
+    $grossProfit = $grossSales - (float) ($profitRow['total_cost'] ?? 0);
+
+    $revenueComparison = Transaction::getRevenueComparison($pdo, $filters['end_date']);
+    $todayRefund = refund_sum_by_date_range($filters['end_date'], $filters['end_date']);
+    $yesterday = date('Y-m-d', strtotime($filters['end_date'] . ' -1 day'));
+    $yesterdayRefund = refund_sum_by_date_range($yesterday, $yesterday);
+    $revenueComparison['today'] = max(0.0, (float) $revenueComparison['today'] - $todayRefund);
+    $revenueComparison['yesterday'] = max(0.0, (float) $revenueComparison['yesterday'] - $yesterdayRefund);
+    $revenueComparison['diff'] = $revenueComparison['today'] - $revenueComparison['yesterday'];
+    $revenueComparison['pct'] = $revenueComparison['yesterday'] > 0
+        ? ($revenueComparison['diff'] / $revenueComparison['yesterday']) * 100
+        : ($revenueComparison['today'] > 0 ? 100.0 : 0.0);
+    $revenueComparison['trend'] = $revenueComparison['diff'] >= 0 ? 'up' : 'down';
+
+    $chartStart = date('Y-m-d', strtotime($filters['end_date'] . ' -6 days'));
+    if ($chartStart < $filters['start_date']) {
+        $chartStart = $filters['start_date'];
+    }
+    $revenueSeries = Transaction::getRevenueSeries($pdo, $chartStart, $filters['end_date']);
+    $refundByDate = refund_group_by_date($chartStart, $filters['end_date']);
+    foreach ($revenueSeries as $index => $row) {
+        $dateKey = (string) ($row['date'] ?? '');
+        if ($dateKey !== '' && isset($refundByDate[$dateKey])) {
+            $revenueSeries[$index]['value'] = max(0.0, (float) $row['value'] - (float) $refundByDate[$dateKey]);
+        }
+    }
+
+    $activeColumn = Product::activeColumn($pdo);
+    $activeProductCount = 0;
+    foreach ($products as $product) {
+        $isActive = !$activeColumn || (int) ($product['is_active'] ?? 1) === 1;
+        if ($isActive) {
+            $activeProductCount++;
+        }
+    }
+
+    $userActiveColumn = User::activeColumn($pdo);
+    $activeStaffCount = 0;
+    foreach ($users as $userRow) {
+        $isActive = !$userActiveColumn || (int) ($userRow[$userActiveColumn] ?? 1) === 1;
+        if ($isActive) {
+            $activeStaffCount++;
+        }
+    }
+
+    $activeMemberCount = 0;
+    foreach ($customers as $customer) {
+        if (!empty($customer['is_active'])) {
+            $activeMemberCount++;
+        }
+    }
+
+    $topProducts = Transaction::getTopProducts($pdo, $filters['start_date'], $filters['end_date'], 5);
+
+    $attentionItems = [];
+    if (!empty($operationsSnapshot['profile_needs_attention'])) {
+        $attentionItems[] = [
+            'title' => 'Profil toko belum lengkap',
+            'detail' => 'Lengkapi identitas outlet agar struk, laporan, dan tampilan admin lebih profesional.',
+            'url' => base_url('admin_store.php'),
+            'action' => 'Lengkapi Profil',
+        ];
+    }
+    if (count($lowStockItems) > 0) {
+        $attentionItems[] = [
+            'title' => 'Ada stok kritis yang perlu ditindak',
+            'detail' => count($lowStockItems) . ' produk sudah menyentuh batas minimum stok.',
+            'url' => base_url('admin_inventory.php?stock_status=critical'),
+            'action' => 'Buka Inventori',
+        ];
+    }
+    if ($activeStaffCount <= 0) {
+        $attentionItems[] = [
+            'title' => 'Belum ada user aktif',
+            'detail' => 'Sistem kasir butuh minimal satu user aktif untuk operasional harian.',
+            'url' => base_url('admin_users.php'),
+            'action' => 'Kelola User',
+        ];
+    }
+    if ($transactionCount <= 0) {
+        $attentionItems[] = [
+            'title' => 'Belum ada transaksi pada periode ini',
+            'detail' => 'Pastikan kasir aktif, produk siap jual, dan metode pembayaran berjalan normal.',
+            'url' => base_url('kasir.php'),
+            'action' => 'Buka POS',
+        ];
+    }
+
+    $dashboard = [
+        'filters' => $filters,
+        'period_days' => max(1, $periodDays),
+        'transactions_count' => $transactionCount,
+        'today_transactions' => (int) ($todayTransactionCount['count'] ?? 0),
+        'gross_sales' => $grossSales,
+        'refund_total' => $refundTotal,
+        'net_sales' => $netSales,
+        'gross_profit' => $grossProfit,
+        'average_ticket' => $transactionCount > 0 ? ($netSales / $transactionCount) : 0.0,
+        'daily_average' => $periodDays > 0 ? ($netSales / $periodDays) : 0.0,
+        'product_total' => count($products),
+        'product_active' => $activeProductCount,
+        'product_inactive' => max(0, count($products) - $activeProductCount),
+        'staff_total' => count($users),
+        'staff_active' => $activeStaffCount,
+        'member_total' => count($customers),
+        'member_active' => $activeMemberCount,
+        'low_stock_count' => count($lowStockItems),
+        'low_stock_items' => array_slice($lowStockItems, 0, 5),
+        'payment_percentage' => [
+            'cash_total' => $netCash,
+            'qris_total' => $netQris,
+            'cash_pct' => ($netCash / $paymentTotal) * 100,
+            'qris_pct' => ($netQris / $paymentTotal) * 100,
+        ],
+        'revenue_series' => $revenueSeries,
+        'revenue_comparison' => $revenueComparison,
+        'top_products' => $topProducts,
+        'last_transaction' => $lastTransaction ?: null,
+        'operations' => $operationsSnapshot,
+        'attention_items' => $attentionItems,
+    ];
+} catch (Throwable $e) {
+    error_log('[admin_dashboard] ' . $e->getMessage());
+    $errors[] = 'Dashboard operasional belum bisa dimuat penuh. Periksa koneksi database dan struktur data.';
+}
+
+$title = 'Dashboard Operasional';
+
 require_once __DIR__ . '/../app/views/admin/dashboard.php';

@@ -6,6 +6,7 @@ require_once __DIR__ . '/../app/config/app.php';
 require_once __DIR__ . '/../app/config/database.php';
 require_once __DIR__ . '/../app/auth/middleware.php';
 require_once __DIR__ . '/../app/helpers/format_helper.php';
+require_once __DIR__ . '/../app/helpers/tenant_helper.php';
 require_once __DIR__ . '/../app/helpers/refund_helper.php';
 require_once __DIR__ . '/../app/models/Transaction.php';
 require_once __DIR__ . '/../app/models/Product.php';
@@ -27,6 +28,11 @@ if (!in_array($filters['method'], ['all', 'cash', 'qris'], true)) {
 $qtyColumn = Transaction::itemQuantityColumn($pdo) ?? 'quantity';
 $costColumn = Product::costColumn($pdo);
 $selectCost = $costColumn ? 'products.' . $costColumn . ' AS cost_price' : '0 AS cost_price';
+$tenantFilters = tenant_multi_where_clause($pdo, [
+    'transactions' => 'transactions',
+    'transaction_items' => 'transaction_items',
+    'products' => 'products',
+]);
 
 $query = 'SELECT transactions.id,
                  transactions.created_at,
@@ -41,7 +47,8 @@ $query = 'SELECT transactions.id,
           LEFT JOIN payments ON payments.transaction_id = transactions.id
           INNER JOIN transaction_items ON transaction_items.transaction_id = transactions.id
           INNER JOIN products ON products.id = transaction_items.product_id
-          WHERE DATE(transactions.created_at) BETWEEN :start_date AND :end_date';
+          WHERE DATE(transactions.created_at) BETWEEN :start_date AND :end_date'
+          . $tenantFilters['sql'];
 
 $params = [
     ':start_date' => $filters['start_date'],
@@ -56,7 +63,7 @@ if ($filters['method'] !== 'all') {
 $query .= ' ORDER BY transactions.created_at DESC, transactions.id DESC';
 
 $stmt = $pdo->prepare($query);
-$stmt->execute($params);
+$stmt->execute($params + $tenantFilters['params']);
 $rows = $stmt->fetchAll();
 
 $summary = [

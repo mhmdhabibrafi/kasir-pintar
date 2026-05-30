@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/../helpers/tenant_helper.php';
+
 class User
 {
     public static function roles(PDO $pdo): array
@@ -14,13 +16,18 @@ class User
     {
         $activeColumn = self::activeColumn($pdo);
         $selectActive = $activeColumn ? ', users.' . $activeColumn : '';
+        $permissionColumn = self::permissionColumn($pdo);
+        $selectPermissions = $permissionColumn ? ', users.' . $permissionColumn . ' AS permissions_json' : '';
 
-        $stmt = $pdo->query(
-            'SELECT users.id, users.name, users.username, roles.name AS role_name, users.role_id' . $selectActive . '
+        $where = self::tenantWhere($pdo, 'WHERE');
+        $sql =
+            'SELECT users.id, users.name, users.username, roles.name AS role_name, users.role_id' . $selectActive . $selectPermissions . '
              FROM users
              INNER JOIN roles ON roles.id = users.role_id
-             ORDER BY users.name'
-        );
+             ' . $where . '
+             ORDER BY users.name';
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute(self::tenantBind([], $pdo));
         return $stmt->fetchAll();
     }
 
@@ -28,22 +35,26 @@ class User
     {
         $activeColumn = self::activeColumn($pdo);
         $selectActive = $activeColumn ? ', users.' . $activeColumn : '';
+        $permissionColumn = self::permissionColumn($pdo);
+        $selectPermissions = $permissionColumn ? ', users.' . $permissionColumn . ' AS permissions_json' : '';
 
         $stmt = $pdo->prepare(
-            'SELECT users.id, users.name, users.username, users.role_id, roles.name AS role_name' . $selectActive . '
+            'SELECT users.id, users.name, users.username, users.role_id, roles.name AS role_name' . $selectActive . $selectPermissions . '
              FROM users
              INNER JOIN roles ON roles.id = users.role_id
              WHERE users.id = :id
+             ' . self::tenantWhere($pdo, 'AND') . '
              LIMIT 1'
         );
-        $stmt->execute([':id' => $id]);
+        $stmt->execute(self::tenantBind([':id' => $id], $pdo));
         $row = $stmt->fetch();
         return $row ?: null;
     }
 
     public static function count(PDO $pdo): int
     {
-        $stmt = $pdo->query('SELECT COUNT(*) FROM users');
+        $stmt = $pdo->prepare('SELECT COUNT(*) FROM users' . self::tenantWhere($pdo, 'WHERE'));
+        $stmt->execute(self::tenantBind([], $pdo));
         return (int) $stmt->fetchColumn();
     }
 
@@ -57,8 +68,19 @@ class User
         return self::pickColumn($pdo, 'users', ['is_active', 'active', 'status']);
     }
 
+    public static function storeIdColumn(PDO $pdo): ?string
+    {
+        return self::pickColumn($pdo, 'users', ['store_id']);
+    }
+
+    public static function permissionColumn(PDO $pdo): ?string
+    {
+        return self::pickColumn($pdo, 'users', ['permissions_json']);
+    }
+
     public static function create(PDO $pdo, array $data): int
     {
+        $data = tenant_apply_insert_store($pdo, 'users', $data);
         $columns = array_keys($data);
         $placeholders = array_map(static fn ($col) => ':' . $col, $columns);
 
@@ -87,9 +109,9 @@ class User
             $params[':' . $column] = $value;
         }
 
-        $sql = 'UPDATE users SET ' . implode(', ', $setParts) . ' WHERE id = :id';
+        $sql = 'UPDATE users SET ' . implode(', ', $setParts) . ' WHERE id = :id' . self::tenantWhere($pdo, 'AND');
         $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
+        $stmt->execute(self::tenantBind($params, $pdo));
     }
 
     public static function setActive(PDO $pdo, int $id, int $active): void
@@ -99,8 +121,8 @@ class User
             return;
         }
 
-        $stmt = $pdo->prepare('UPDATE users SET ' . $column . ' = :active WHERE id = :id');
-        $stmt->execute([':active' => $active, ':id' => $id]);
+        $stmt = $pdo->prepare('UPDATE users SET ' . $column . ' = :active WHERE id = :id' . self::tenantWhere($pdo, 'AND'));
+        $stmt->execute(self::tenantBind([':active' => $active, ':id' => $id], $pdo));
     }
 
     public static function usernameExists(PDO $pdo, string $username, ?int $excludeId = null): bool
@@ -136,5 +158,33 @@ class User
         $column = $stmt->fetchColumn();
 
         return $column ?: null;
+    }
+
+    private static function hasActiveSessionUser(): bool
+    {
+        if (!function_exists('current_user')) {
+            return false;
+        }
+
+        $user = current_user();
+        return is_array($user) && !empty($user);
+    }
+
+    private static function tenantWhere(PDO $pdo, string $prefix): string
+    {
+        if (!self::hasActiveSessionUser()) {
+            return '';
+        }
+
+        return tenant_where_clause($pdo, 'users', 'users', $prefix);
+    }
+
+    private static function tenantBind(array $params, PDO $pdo): array
+    {
+        if (!self::hasActiveSessionUser()) {
+            return $params;
+        }
+
+        return tenant_bind($params, $pdo);
     }
 }

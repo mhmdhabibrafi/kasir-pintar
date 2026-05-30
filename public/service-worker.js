@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kp-pwa-v2';
+const CACHE_NAME = 'kp-pwa-v3';
 const BASE_PATH = self.location.pathname.replace(/service-worker\.js$/, '');
 const CORE_ASSETS = [
   `${BASE_PATH}manifest.webmanifest`,
@@ -30,6 +30,12 @@ self.addEventListener('fetch', (event) => {
 
   // Never cache navigations or PHP responses to avoid storing sensitive pages.
   if (request.mode === 'navigate' || (url.origin === self.location.origin && url.pathname.endsWith('.php'))) {
+    return;
+  }
+
+  // Always fetch styles/scripts fresh so UI fixes are visible immediately after deploy.
+  if (request.destination === 'style' || request.destination === 'script') {
+    event.respondWith(fetch(request));
     return;
   }
 

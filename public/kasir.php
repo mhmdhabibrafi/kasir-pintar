@@ -6,11 +6,19 @@ require_once __DIR__ . '/../app/config/database.php';
 require_once __DIR__ . '/../app/auth/middleware.php';
 require_once __DIR__ . '/../app/helpers/format_helper.php';
 require_once __DIR__ . '/../app/helpers/upload_helper.php';
-require_once __DIR__ . '/../app/helpers/telegram_helper.php';
 require_once __DIR__ . '/../app/helpers/inventory_helper.php';
 require_once __DIR__ . '/../app/helpers/promo_helper.php';
+require_once __DIR__ . '/../app/helpers/store_info_helper.php';
+require_once __DIR__ . '/../app/helpers/store_operations_helper.php';
 require_once __DIR__ . '/../app/helpers/transaction_meta_helper.php';
 require_once __DIR__ . '/../app/helpers/shift_helper.php';
+require_once __DIR__ . '/../app/helpers/user_permission_helper.php';
+
+$telegramHelperPath = __DIR__ . '/../app/helpers/telegram_helper.php';
+if (is_file($telegramHelperPath)) {
+    require_once $telegramHelperPath;
+}
+
 require_once __DIR__ . '/../app/models/Product.php';
 require_once __DIR__ . '/../app/models/Category.php';
 require_once __DIR__ . '/../app/models/Transaction.php';
@@ -21,14 +29,66 @@ require_role(['karyawan', 'bos', 'admin']);
 
 $pdo = db();
 $user = current_user();
+user_permission_guard($user, 'access_cashier', 'Admin menonaktifkan akses halaman kasir untuk akun ini.');
+
+$cashierPermissions = user_permissions($user);
+$canHoldTransactions = user_can($user, 'hold_transaction');
+$canVoidItem = user_can($user, 'void_item');
+$canAdjustPricing = user_can($user, 'adjust_pricing');
+$canPayCash = user_can($user, 'pay_cash');
+$canPayQris = user_can($user, 'pay_qris');
+$canPrintReceipt = user_can($user, 'print_receipt');
+$canBluetoothPrint = user_can($user, 'bluetooth_print');
+$restrictedCashierFeatures = [];
+if (!$canAdjustPricing) {
+    $restrictedCashierFeatures[] = 'diskon dan voucher';
+}
+if (!$canHoldTransactions) {
+    $restrictedCashierFeatures[] = 'hold transaksi';
+}
+if (!$canVoidItem) {
+    $restrictedCashierFeatures[] = 'void item';
+}
+if (!$canPayCash || !$canPayQris) {
+    $paymentLabels = [];
+    if (!$canPayCash) {
+        $paymentLabels[] = 'cash';
+    }
+    if (!$canPayQris) {
+        $paymentLabels[] = 'QRIS';
+    }
+    if (!empty($paymentLabels)) {
+        $restrictedCashierFeatures[] = 'pembayaran ' . implode(' / ', $paymentLabels);
+    }
+}
+if (!$canPrintReceipt || !$canBluetoothPrint) {
+    $printLabels = [];
+    if (!$canPrintReceipt) {
+        $printLabels[] = 'print struk';
+    }
+    if (!$canBluetoothPrint) {
+        $printLabels[] = 'Bluetooth';
+    }
+    if (!empty($printLabels)) {
+        $restrictedCashierFeatures[] = implode(' / ', $printLabels);
+    }
+}
 $promoConfig = promo_get_config();
 $promoDefaults = $promoConfig['defaults'] ?? [];
+$storeInfo = store_info_get();
 $inventoryItems = inventory_get_all();
 $activeShift = $user ? shift_get_active((int) $user['id']) : null;
 $errors = [];
 $success = '';
 $lastTransactionId = null;
 $paymentMethod = $_POST['payment_method'] ?? 'cash';
+if ($paymentMethod === 'cash' && !$canPayCash && $canPayQris) {
+    $paymentMethod = 'qris';
+} elseif ($paymentMethod === 'qris' && !$canPayQris && $canPayCash) {
+    $paymentMethod = 'cash';
+} elseif (!$canPayCash && !$canPayQris) {
+    $paymentMethod = '';
+}
 $cashReceived = max(0.0, (float) ($_POST['cash_received'] ?? 0));
 $note = trim((string) ($_POST['note'] ?? ''));
 $selectedCustomerId = (int) ($_POST['customer_id'] ?? 0);
@@ -93,6 +153,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     };
 
     if ($action === 'hold_save') {
+        if (!$canHoldTransactions) {
+            $respond(['ok' => false, 'message' => 'Akses hold transaksi dinonaktifkan untuk akun ini.']);
+        }
         $items = json_decode((string) ($_POST['items'] ?? ''), true);
         if (!is_array($items) || empty($items)) {
             $respond(['ok' => false, 'message' => 'Keranjang kosong.']);
@@ -132,10 +195,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     }
 
     if ($action === 'hold_list') {
+        if (!$canHoldTransactions) {
+            $respond(['ok' => false, 'message' => 'Akses hold transaksi dinonaktifkan untuk akun ini.']);
+        }
         $respond(['ok' => true, 'holds' => $buildHoldList($_SESSION['held_carts'][$userId])]);
     }
 
     if ($action === 'hold_load') {
+        if (!$canHoldTransactions) {
+            $respond(['ok' => false, 'message' => 'Akses hold transaksi dinonaktifkan untuk akun ini.']);
+        }
         $holdId = (string) ($_POST['hold_id'] ?? '');
         foreach ($_SESSION['held_carts'][$userId] as $hold) {
             if ($hold['id'] === $holdId) {
@@ -152,6 +221,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     }
 
     if ($action === 'hold_delete') {
+        if (!$canHoldTransactions) {
+            $respond(['ok' => false, 'message' => 'Akses hold transaksi dinonaktifkan untuk akun ini.']);
+        }
         $holdId = (string) ($_POST['hold_id'] ?? '');
         $_SESSION['held_carts'][$userId] = array_values(array_filter(
             $_SESSION['held_carts'][$userId],
@@ -161,6 +233,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     }
 
     if ($action === 'void_log') {
+        if (!$canVoidItem) {
+            $respond(['ok' => false, 'message' => 'Akses void item dinonaktifkan untuk akun ini.']);
+        }
         $log = [
             'product_id' => (int) ($_POST['product_id'] ?? 0),
             'qty' => (int) ($_POST['qty'] ?? 0),
@@ -200,6 +275,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!in_array($paymentMethod, ['cash', 'qris'], true)) {
         $errors[] = 'Metode pembayaran tidak valid.';
+    }
+    if ($paymentMethod === 'cash' && !$canPayCash) {
+        $errors[] = 'Akun ini tidak diizinkan memproses pembayaran cash.';
+    }
+    if ($paymentMethod === 'qris' && !$canPayQris) {
+        $errors[] = 'Akun ini tidak diizinkan memproses pembayaran QRIS.';
     }
 
     if ($selectedCustomerId > 0) {
@@ -241,26 +322,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (empty($errors)) {
-        $itemDiscounts = json_decode((string) ($_POST['item_discounts'] ?? ''), true);
-        $itemDiscounts = is_array($itemDiscounts) ? $itemDiscounts : [];
-        $orderDiscountType = (string) ($_POST['order_discount_type'] ?? 'none');
-        $orderDiscountValue = (float) ($_POST['order_discount_value'] ?? 0);
-        $voucherCode = trim((string) ($_POST['voucher_code'] ?? ''));
-        $taxPercent = (float) ($_POST['tax_percent'] ?? ($promoDefaults['tax_percent'] ?? 0));
-        $servicePercent = (float) ($_POST['service_percent'] ?? ($promoDefaults['service_percent'] ?? 0));
-        $roundingMode = (string) ($_POST['rounding_mode'] ?? ($promoDefaults['rounding_mode'] ?? 'none'));
-        $roundingUnit = (int) ($_POST['rounding_unit'] ?? ($promoDefaults['rounding_unit'] ?? 100));
+        $postedItemDiscounts = json_decode((string) ($_POST['item_discounts'] ?? ''), true);
+        $postedItemDiscounts = is_array($postedItemDiscounts) ? $postedItemDiscounts : [];
+        $defaultTaxPercent = (float) ($promoDefaults['tax_percent'] ?? 0);
+        $defaultServicePercent = (float) ($promoDefaults['service_percent'] ?? 0);
+        $defaultRoundingMode = (string) ($promoDefaults['rounding_mode'] ?? 'none');
+        $defaultRoundingUnit = (int) ($promoDefaults['rounding_unit'] ?? 100);
 
-        if (!in_array($orderDiscountType, ['none', 'percent', 'amount'], true)) {
+        if ($canAdjustPricing) {
+            $itemDiscounts = $postedItemDiscounts;
+            $orderDiscountType = (string) ($_POST['order_discount_type'] ?? 'none');
+            $orderDiscountValue = (float) ($_POST['order_discount_value'] ?? 0);
+            $voucherCode = trim((string) ($_POST['voucher_code'] ?? ''));
+            $taxPercent = (float) ($_POST['tax_percent'] ?? $defaultTaxPercent);
+            $servicePercent = (float) ($_POST['service_percent'] ?? $defaultServicePercent);
+            $roundingMode = (string) ($_POST['rounding_mode'] ?? $defaultRoundingMode);
+            $roundingUnit = (int) ($_POST['rounding_unit'] ?? $defaultRoundingUnit);
+
+            if (!in_array($orderDiscountType, ['none', 'percent', 'amount'], true)) {
+                $orderDiscountType = 'none';
+            }
+            if (!in_array($roundingMode, ['none', 'nearest', 'up', 'down'], true)) {
+                $roundingMode = 'none';
+            }
+            $orderDiscountValue = max(0, $orderDiscountValue);
+            $taxPercent = max(0, min(100, $taxPercent));
+            $servicePercent = max(0, min(100, $servicePercent));
+            $roundingUnit = max(1, $roundingUnit);
+        } else {
+            $itemDiscounts = [];
             $orderDiscountType = 'none';
+            $orderDiscountValue = 0.0;
+            $voucherCode = '';
+            $taxPercent = $defaultTaxPercent;
+            $servicePercent = $defaultServicePercent;
+            $roundingMode = $defaultRoundingMode;
+            $roundingUnit = max(1, $defaultRoundingUnit);
         }
-        if (!in_array($roundingMode, ['none', 'nearest', 'up', 'down'], true)) {
-            $roundingMode = 'none';
-        }
-        $orderDiscountValue = max(0, $orderDiscountValue);
-        $taxPercent = max(0, min(100, $taxPercent));
-        $servicePercent = max(0, min(100, $servicePercent));
-        $roundingUnit = max(1, $roundingUnit);
 
         $voucher = null;
         if ($voucherCode !== '') {
@@ -434,7 +532,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $item['price'],
                         $item['subtotal']
                     );
-                    if ($stockColumn) {
+                    $productId = (int) $item['product_id'];
+                    $invItem = inventory_get_item($productId);
+                    $inventoryTracked = is_array($invItem) && array_key_exists('stock', $invItem) && $invItem['stock'] !== null;
+                    if ($inventoryTracked) {
+                        if (!inventory_reduce($productId, (int) $item['quantity'], 'sale', 'trx#' . $transactionId, (int) ($user['id'] ?? 0))) {
+                            throw new RuntimeException('Stok tidak mencukupi.');
+                        }
+                    } elseif ($stockColumn) {
                         if (!Product::reduceStock($pdo, $item['product_id'], $item['quantity'])) {
                             throw new RuntimeException('Stok tidak mencukupi.');
                         }
@@ -459,27 +564,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 foreach ($lineItems as $item) {
                     $productId = (int) $item['product_id'];
-                    $invItem = $inventoryItems[$productId] ?? null;
-                    if (is_array($invItem) && array_key_exists('stock', $invItem) && $invItem['stock'] !== null) {
-                        inventory_adjust(
-                            $productId,
-                            -1 * (int) $item['quantity'],
-                            'sale',
-                            'trx#' . $transactionId,
-                            (int) ($user['id'] ?? 0)
-                        );
-                        $updatedInvItem = inventory_get_item($productId);
-                        if (is_array($updatedInvItem) && array_key_exists('stock', $updatedInvItem) && $updatedInvItem['stock'] !== null) {
-                            $stockNow = (int) ($updatedInvItem['stock'] ?? 0);
-                            $minNow = (int) ($updatedInvItem['min'] ?? 0);
-                            if ($stockNow <= $minNow) {
-                                $lowStockItems[$productId] = [
-                                    'id' => $productId,
-                                    'name' => $productsMap[$productId]['name'] ?? ('#' . $productId),
-                                    'stock' => $stockNow,
-                                    'min' => $minNow,
-                                ];
-                            }
+                    $updatedInvItem = inventory_get_item($productId);
+                    if (is_array($updatedInvItem) && array_key_exists('stock', $updatedInvItem) && $updatedInvItem['stock'] !== null) {
+                        $stockNow = (int) ($updatedInvItem['stock'] ?? 0);
+                        $minNow = (int) ($updatedInvItem['min'] ?? 0);
+                        if ($stockNow <= $minNow) {
+                            $lowStockItems[$productId] = [
+                                'id' => $productId,
+                                'name' => $productsMap[$productId]['name'] ?? ('#' . $productId),
+                                'stock' => $stockNow,
+                                'min' => $minNow,
+                            ];
                         }
                     }
                 }
@@ -524,126 +619,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ];
                 transaction_meta_set($transactionId, $meta);
 
-                if (telegram_can_send('transaction')) {
-                    $telegramConfig = telegram_config();
-                    $cashierName = $user['name'] ?? 'Kasir';
-                    $divider = str_repeat('-', 32);
-                    $lines = [];
-                    $lines[] = 'KASPINDO';
-                    $lines[] = 'Bukti Transaksi Pembayaran';
-                    $lines[] = $divider;
-                    $lines[] = '';
-                    $lines[] = 'No. Transaksi : #' . $transactionId;
-                    $lines[] = 'Tanggal       : ' . date('d/m/Y');
-                    $lines[] = 'Waktu         : ' . date('H:i');
-                    $lines[] = 'Kasir         : ' . $cashierName;
-                    $lines[] = 'Metode Bayar  : ' . strtoupper($paymentMethod);
-                    if ($selectedCustomer) {
-                        $lines[] = 'Member        : ' . ($selectedCustomer['name'] ?? '-');
-                        if (!empty($selectedCustomer['phone'])) {
-                            $lines[] = 'No. HP        : ' . $selectedCustomer['phone'];
-                        }
-                        if ($pointsEarned > 0) {
-                            $lines[] = 'Poin Didapat  : +' . $pointsEarned;
-                        }
-                    }
-                    $lines[] = '';
-                    $includeItems = !empty($telegramConfig['include_items']);
-                    $format = $telegramConfig['format'] ?? 'detail';
-                    if ($includeItems && $format === 'detail') {
-                        $lines[] = $divider;
-                        $lines[] = 'DETAIL PESANAN';
-                        $lines[] = $divider;
-
-                        foreach ($lineItems as $item) {
-                            $productName = $productsMap[$item['product_id']]['name'] ?? 'Item';
-                            $metaItem = $itemMeta[$item['product_id']] ?? null;
-                            $lineTotal = $metaItem ? (float) ($metaItem['total'] ?? 0) : (float) $item['subtotal'];
-                            $lineDiscount = $metaItem ? (float) ($metaItem['discount'] ?? 0) : 0.0;
-                            $lines[] = $productName;
-                            $lines[] = 'Qty  : ' . (int) $item['quantity'];
-                            $lines[] = 'Harga: ' . format_rupiah($lineTotal);
-                            if ($lineDiscount > 0) {
-                                $lines[] = 'Diskon: -' . format_rupiah($lineDiscount);
-                            }
-                            $lines[] = '';
-                        }
-                    } else {
-                        $totalItems = 0;
-                        foreach ($lineItems as $item) {
-                            $totalItems += (int) $item['quantity'];
-                        }
-                        $lines[] = $divider;
-                        $lines[] = 'RINGKASAN';
-                        $lines[] = $divider;
-                        $lines[] = 'Total Item : ' . $totalItems;
-                        $lines[] = 'Subtotal   : ' . format_rupiah($subtotal);
-                        $lines[] = '';
-                    }
-
-                    if ($note !== '') {
-                        $lines[] = 'Catatan: ' . $note;
-                        $lines[] = '';
-                    }
-
-                    $lines[] = $divider;
-                    if ($itemDiscountTotal > 0) {
-                        $lines[] = 'Diskon Item : -' . format_rupiah($itemDiscountTotal);
-                    }
-                    if ($orderDiscountAmount > 0) {
-                        $lines[] = 'Diskon Order: -' . format_rupiah($orderDiscountAmount);
-                    }
-                    if ($voucherDiscountAmount > 0) {
-                        $lines[] = 'Voucher      : -' . format_rupiah($voucherDiscountAmount);
-                    }
-                    if ($taxAmount > 0) {
-                        $lines[] = 'Pajak        : ' . format_rupiah($taxAmount);
-                    }
-                    if ($serviceAmount > 0) {
-                        $lines[] = 'Service      : ' . format_rupiah($serviceAmount);
-                    }
-                    if ($roundingAmount != 0.0) {
-                        $lines[] = 'Pembulatan   : ' . format_rupiah($roundingAmount);
-                    }
-                    $lines[] = 'TOTAL BAYAR';
-                    $lines[] = $divider;
-                    $lines[] = format_rupiah($total);
-                    $lines[] = $divider;
-                    $lines[] = '';
-                    $lines[] = 'Instagram : @kaspindo';
-                    $lines[] = 'Alamat    : Jl. SMA 1 Kel No. RT 16,';
-                    $lines[] = '            Aur, Sarolangun,';
-                    $lines[] = '            Kab. Sarolangun, Jambi 37481';
-                    $lines[] = '';
-                    $lines[] = 'Terima kasih atas kunjungan Anda.';
-
-                    $caption = '<pre>' . telegram_escape(implode("\n", $lines)) . '</pre>';
-                    $logoPng = __DIR__ . '/assets/images/logo.png';
-                    $logoJpg = __DIR__ . '/assets/images/logo.jpg';
-                    $logoPath = is_file($logoPng) ? $logoPng : $logoJpg;
-
-                    $sent = false;
-                    if (!empty($telegramConfig['include_logo']) && is_file($logoPath)) {
-                        $sent = telegram_send_photo($logoPath, $caption, 'HTML');
-                    }
-
-                    if (!$sent) {
-                        telegram_send_message($caption, 'HTML');
-                    }
+                if (function_exists('telegram_notify_transaction')) {
+                    telegram_notify_transaction([
+                        'transaction_id' => $transactionId,
+                        'cashier' => (string) ($user['name'] ?? '-'),
+                        'method' => $paymentMethod,
+                        'total' => $total,
+                        'shift_id' => (string) ($activeShift['shift_id'] ?? '-'),
+                    ]);
                 }
-
-                if (!empty($lowStockItems) && telegram_can_send('low_stock')) {
-                    $lines = [];
-                    $lines[] = 'KASPINDO';
-                    $lines[] = 'Peringatan Stok Menipis';
-                    $lines[] = str_repeat('-', 32);
-                    $lines[] = 'Transaksi     : #' . $transactionId;
-                    $lines[] = 'Waktu         : ' . date('d/m/Y H:i');
-                    $lines[] = '';
-                    foreach ($lowStockItems as $item) {
-                        $lines[] = $item['name'] . ' | stok ' . $item['stock'] . ' (min ' . $item['min'] . ')';
-                    }
-                    telegram_send_message('<pre>' . telegram_escape(implode("\n", $lines)) . '</pre>', 'HTML');
+                if (function_exists('telegram_notify_low_stock') && !empty($lowStockItems)) {
+                    telegram_notify_low_stock(array_values($lowStockItems));
                 }
 
                 $success = 'Transaksi #' . $transactionId . ' berhasil disimpan. Total: ' . format_rupiah($total);
@@ -673,6 +659,7 @@ $promoVouchers = $promoConfig['vouchers'] ?? [];
 $customers = Customer::allActive($pdo);
 $shiftInfo = $activeShift;
 $shiftBalance = $shiftInfo ? shift_cash_balance($shiftInfo) : null;
+$operationsSnapshot = store_operations_snapshot($pdo, $user, $products);
 $kasirInfo = [
     'name' => $user['name'] ?? 'Kasir',
     'login_time' => $_SESSION['login_time'] ?? date('Y-m-d H:i:s'),
@@ -681,5 +668,6 @@ $kasirInfo = [
 $holdCarts = $_SESSION['held_carts'][(int) ($user['id'] ?? 0)] ?? [];
 $checkoutToken = $_SESSION['checkout_token'];
 $title = 'Kasir';
+$bodyClass = trim((string) ($bodyClass ?? '') . ' kp-page-kasir');
 
 require_once __DIR__ . '/../app/views/kasir/index.php';

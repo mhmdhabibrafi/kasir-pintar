@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/db_migration_helper.php';
+require_once __DIR__ . '/tenant_helper.php';
 
 function promo_default_config(): array
 {
@@ -24,7 +25,9 @@ function promo_get_config(): array
     ensure_update_schema();
     $pdo = db();
     $defaults = promo_default_config()['defaults'];
-    $stmt = $pdo->query('SELECT tax_percent, service_percent, rounding_mode, rounding_unit, updated_at FROM promo_settings ORDER BY id ASC LIMIT 1');
+    $where = tenant_where_clause($pdo, 'promo_settings', 'promo_settings');
+    $stmt = $pdo->prepare('SELECT tax_percent, service_percent, rounding_mode, rounding_unit, updated_at FROM promo_settings' . $where . ' ORDER BY id ASC LIMIT 1');
+    $stmt->execute(tenant_bind([], $pdo));
     $row = $stmt->fetch();
     if ($row) {
         $defaults = [
@@ -34,24 +37,32 @@ function promo_get_config(): array
             'rounding_unit' => (int) $row['rounding_unit'],
         ];
     } else {
+        $hasStore = tenant_table_has_column($pdo, 'promo_settings', 'store_id');
         $insert = $pdo->prepare(
-            'INSERT INTO promo_settings (tax_percent, service_percent, rounding_mode, rounding_unit)
-             VALUES (:tax_percent, :service_percent, :rounding_mode, :rounding_unit)'
+            'INSERT INTO promo_settings (tax_percent, service_percent, rounding_mode, rounding_unit' . ($hasStore ? ', store_id' : '') . ')
+             VALUES (:tax_percent, :service_percent, :rounding_mode, :rounding_unit' . ($hasStore ? ', :store_id' : '') . ')'
         );
-        $insert->execute([
+        $params = [
             ':tax_percent' => $defaults['tax_percent'],
             ':service_percent' => $defaults['service_percent'],
             ':rounding_mode' => $defaults['rounding_mode'],
             ':rounding_unit' => $defaults['rounding_unit'],
-        ]);
+        ];
+        if ($hasStore) {
+            $params[':store_id'] = tenant_active_store_id($pdo);
+        }
+        $insert->execute($params);
     }
 
     $vouchers = [];
-    $voucherStmt = $pdo->query(
+    $voucherWhere = tenant_where_clause($pdo, 'promo_vouchers', 'promo_vouchers');
+    $voucherStmt = $pdo->prepare(
         'SELECT code, name, type, value, min_total, max_discount, expires, active
          FROM promo_vouchers
+         ' . $voucherWhere . '
          ORDER BY code ASC'
     );
+    $voucherStmt->execute(tenant_bind([], $pdo));
     foreach ($voucherStmt->fetchAll() as $voucher) {
         $vouchers[] = [
             'code' => (string) $voucher['code'],
@@ -83,7 +94,10 @@ function promo_save_config(array $config): void
 
     $pdo->beginTransaction();
     try {
-        $existing = $pdo->query('SELECT id FROM promo_settings ORDER BY id ASC LIMIT 1')->fetch();
+        $settingsWhere = tenant_where_clause($pdo, 'promo_settings', 'promo_settings');
+        $settingsStmt = $pdo->prepare('SELECT id FROM promo_settings' . $settingsWhere . ' ORDER BY id ASC LIMIT 1');
+        $settingsStmt->execute(tenant_bind([], $pdo));
+        $existing = $settingsStmt->fetch();
         if ($existing) {
             $update = $pdo->prepare(
                 'UPDATE promo_settings
@@ -91,26 +105,31 @@ function promo_save_config(array $config): void
                      service_percent = :service_percent,
                      rounding_mode = :rounding_mode,
                      rounding_unit = :rounding_unit
-                 WHERE id = :id'
+                 WHERE id = :id' . tenant_where_clause($pdo, 'promo_settings', 'promo_settings', 'AND')
             );
-            $update->execute([
+            $update->execute(tenant_bind([
                 ':tax_percent' => $defaults['tax_percent'],
                 ':service_percent' => $defaults['service_percent'],
                 ':rounding_mode' => $defaults['rounding_mode'],
                 ':rounding_unit' => $defaults['rounding_unit'],
                 ':id' => (int) $existing['id'],
-            ]);
+            ], $pdo));
         } else {
+            $hasStore = tenant_table_has_column($pdo, 'promo_settings', 'store_id');
             $insert = $pdo->prepare(
-                'INSERT INTO promo_settings (tax_percent, service_percent, rounding_mode, rounding_unit)
-                 VALUES (:tax_percent, :service_percent, :rounding_mode, :rounding_unit)'
+                'INSERT INTO promo_settings (tax_percent, service_percent, rounding_mode, rounding_unit' . ($hasStore ? ', store_id' : '') . ')
+                 VALUES (:tax_percent, :service_percent, :rounding_mode, :rounding_unit' . ($hasStore ? ', :store_id' : '') . ')'
             );
-            $insert->execute([
+            $params = [
                 ':tax_percent' => $defaults['tax_percent'],
                 ':service_percent' => $defaults['service_percent'],
                 ':rounding_mode' => $defaults['rounding_mode'],
                 ':rounding_unit' => $defaults['rounding_unit'],
-            ]);
+            ];
+            if ($hasStore) {
+                $params[':store_id'] = tenant_active_store_id($pdo);
+            }
+            $insert->execute($params);
         }
 
         $codes = [];
@@ -122,18 +141,34 @@ function promo_save_config(array $config): void
         }
 
         if (!empty($codes)) {
-            $placeholders = implode(',', array_fill(0, count($codes), '?'));
-            $deleteStmt = $pdo->prepare('DELETE FROM promo_vouchers WHERE code NOT IN (' . $placeholders . ')');
-            $deleteStmt->execute($codes);
+            $deleteParams = [];
+            $placeholders = [];
+            foreach (array_values($codes) as $index => $code) {
+                $key = ':voucher_code_' . $index;
+                $placeholders[] = $key;
+                $deleteParams[$key] = $code;
+            }
+            $placeholders = implode(',', $placeholders);
+            $tenantDelete = tenant_filter_sql($pdo, 'promo_vouchers', 'promo_vouchers');
+            $deleteSql = 'DELETE FROM promo_vouchers WHERE code NOT IN (' . $placeholders . ')';
+            if ($tenantDelete !== '' && tenant_user_store_id(null, $pdo) !== null) {
+                $deleteSql .= ' AND ' . $tenantDelete;
+                $deleteParams[':tenant_store_id'] = tenant_active_store_id($pdo);
+            }
+            $deleteStmt = $pdo->prepare($deleteSql);
+            $deleteStmt->execute($deleteParams);
         } else {
-            $pdo->exec('DELETE FROM promo_vouchers');
+            $deleteSql = 'DELETE FROM promo_vouchers' . tenant_where_clause($pdo, 'promo_vouchers', 'promo_vouchers');
+            $deleteStmt = $pdo->prepare($deleteSql);
+            $deleteStmt->execute(tenant_bind([], $pdo));
         }
 
+        $voucherHasStore = tenant_table_has_column($pdo, 'promo_vouchers', 'store_id');
         $upsert = $pdo->prepare(
             'INSERT INTO promo_vouchers
-                (code, name, type, value, min_total, max_discount, expires, active)
+                (code, name, type, value, min_total, max_discount, expires, active' . ($voucherHasStore ? ', store_id' : '') . ')
              VALUES
-                (:code, :name, :type, :value, :min_total, :max_discount, :expires, :active)
+                (:code, :name, :type, :value, :min_total, :max_discount, :expires, :active' . ($voucherHasStore ? ', :store_id' : '') . ')
              ON DUPLICATE KEY UPDATE
                 name = VALUES(name),
                 type = VALUES(type),
@@ -149,7 +184,7 @@ function promo_save_config(array $config): void
                 continue;
             }
             $type = (string) ($voucher['type'] ?? 'amount');
-            $upsert->execute([
+            $params = [
                 ':code' => $code,
                 ':name' => trim((string) ($voucher['name'] ?? '')),
                 ':type' => $type === 'percent' ? 'percent' : 'amount',
@@ -158,7 +193,11 @@ function promo_save_config(array $config): void
                 ':max_discount' => (float) ($voucher['max'] ?? 0),
                 ':expires' => ($voucher['expires'] ?? '') ?: null,
                 ':active' => !empty($voucher['active']) ? 1 : 0,
-            ]);
+            ];
+            if ($voucherHasStore) {
+                $params[':store_id'] = tenant_active_store_id($pdo);
+            }
+            $upsert->execute($params);
         }
 
         $pdo->commit();
@@ -179,10 +218,10 @@ function promo_find_voucher(string $code): ?array
     $stmt = $pdo->prepare(
         'SELECT code, name, type, value, min_total, max_discount, expires, active
          FROM promo_vouchers
-         WHERE UPPER(code) = :code
+         WHERE UPPER(code) = :code' . tenant_where_clause($pdo, 'promo_vouchers', 'promo_vouchers', 'AND') . '
          LIMIT 1'
     );
-    $stmt->execute([':code' => $code]);
+    $stmt->execute(tenant_bind([':code' => $code], $pdo));
     $voucher = $stmt->fetch();
     if (!$voucher || empty($voucher['active'])) {
         return null;

@@ -1,5 +1,9 @@
 RewriteEngine On
 
+RewriteRule ^(\.env|storage|backup)(/.*)?$ - [F,L]
+
+RewriteRule ^daftar-mitra/?$ public/daftar-mitra.php [L]
+
 RewriteRule ^$ public/index.php [L]
 RewriteCond %{REQUEST_URI} !/public/
 RewriteRule ^(.*)$ public/$1 [L]

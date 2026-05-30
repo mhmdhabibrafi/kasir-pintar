@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../app/config/database.php';
 require_once __DIR__ . '/../app/auth/middleware.php';
 require_once __DIR__ . '/../app/helpers/format_helper.php';
+require_once __DIR__ . '/../app/helpers/tenant_helper.php';
 require_once __DIR__ . '/../app/models/Category.php';
 require_once __DIR__ . '/../app/models/Product.php';
 
@@ -20,8 +21,8 @@ $categoryColumn = Product::categoryColumn($pdo);
 $productTotal = 0;
 
 if ($category && $categoryColumn) {
-    $stmt = $pdo->prepare('SELECT COUNT(*) FROM products WHERE ' . $categoryColumn . ' = :id');
-    $stmt->execute([':id' => $category['id']]);
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM products WHERE ' . $categoryColumn . ' = :id' . tenant_where_clause($pdo, 'products', 'products', 'AND'));
+    $stmt->execute(tenant_bind([':id' => $category['id']], $pdo));
     $productTotal = (int) $stmt->fetchColumn();
 }
 

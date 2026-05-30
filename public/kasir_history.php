@@ -6,6 +6,8 @@ require_once __DIR__ . '/../app/config/database.php';
 require_once __DIR__ . '/../app/auth/middleware.php';
 require_once __DIR__ . '/../app/helpers/format_helper.php';
 require_once __DIR__ . '/../app/helpers/transaction_meta_helper.php';
+require_once __DIR__ . '/../app/helpers/tenant_helper.php';
+require_once __DIR__ . '/../app/helpers/user_permission_helper.php';
 require_once __DIR__ . '/../app/models/Transaction.php';
 
 require_role(['karyawan', 'bos', 'admin']);
@@ -13,6 +15,9 @@ require_role(['karyawan', 'bos', 'admin']);
 $pdo = db();
 $errors = [];
 $user = current_user();
+user_permission_guard($user, 'access_history', 'Admin menonaktifkan akses riwayat transaksi untuk akun ini.');
+$canPrintReceipt = user_can($user, 'print_receipt');
+$canBluetoothPrint = user_can($user, 'bluetooth_print');
 
 $today = date('Y-m-d');
 $filters = [
@@ -32,7 +37,7 @@ try {
               FROM transactions
               LEFT JOIN payments ON payments.transaction_id = transactions.id
               WHERE transactions.user_id = :user_id
-                AND DATE(transactions.created_at) BETWEEN :start_date AND :end_date';
+                AND DATE(transactions.created_at) BETWEEN :start_date AND :end_date' . tenant_where_clause($pdo, 'transactions', 'transactions', 'AND');
     $params = [
         ':user_id' => (int) ($user['id'] ?? 0),
         ':start_date' => $filters['start_date'],
@@ -47,14 +52,21 @@ try {
     $query .= ' ORDER BY transactions.created_at DESC';
 
     $stmt = $pdo->prepare($query);
-    $stmt->execute($params);
+    $stmt->execute(tenant_bind($params, $pdo));
     $transactions = $stmt->fetchAll();
 
     if (!empty($transactions)) {
         $qtyColumn = Transaction::itemQuantityColumn($pdo) ?? 'quantity';
         $transactionIds = array_column($transactions, 'id');
         $metaMap = transaction_meta_bulk($transactionIds);
-        $placeholders = implode(',', array_fill(0, count($transactionIds), '?'));
+        $itemParams = [];
+        $itemPlaceholders = [];
+        foreach (array_values($transactionIds) as $index => $transactionId) {
+            $key = ':trx_id_' . $index;
+            $itemPlaceholders[] = $key;
+            $itemParams[$key] = (int) $transactionId;
+        }
+        $placeholders = implode(',', $itemPlaceholders);
 
         $itemsStmt = $pdo->prepare(
             'SELECT transaction_items.transaction_id,
@@ -64,9 +76,10 @@ try {
              FROM transaction_items
              INNER JOIN products ON products.id = transaction_items.product_id
              WHERE transaction_items.transaction_id IN (' . $placeholders . ')
+             ' . tenant_where_clause($pdo, 'transaction_items', 'transaction_items', 'AND') . '
              ORDER BY transaction_items.transaction_id'
         );
-        $itemsStmt->execute($transactionIds);
+        $itemsStmt->execute(tenant_bind($itemParams, $pdo));
         $items = $itemsStmt->fetchAll();
 
         $itemsByTransaction = [];

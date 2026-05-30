@@ -1,146 +1,193 @@
 # KASPINDO
 
-Aplikasi POS berbasis PHP + MySQL untuk operasional kasir, kontrol shift, kas harian, refund, member loyalitas, notifikasi Telegram, dan pelaporan.
+KASPINDO adalah aplikasi POS berbasis PHP dan MySQL untuk operasional kasir, shift, kas harian, stok, promo, member loyalitas, refund, notifikasi, backup, dan laporan toko.
 
-## Ringkasan Fitur
-- POS kasir mobile + desktop dengan transaksi atomic (`BEGIN/COMMIT/ROLLBACK`).
-- Scan SKU/barcode dari kolom pencarian kasir (ketik/scan lalu `Enter`).
-- Hold transaksi (simpan, lanjutkan, hapus) termasuk metadata diskon dan member.
-- Shift harian dengan kontrol role.
-- Kas harian otomatis: `cash_in/out`, sales cash, sales QRIS, refund, net saldo.
-- Promo dan pricing engine: diskon item, diskon order, voucher, pajak, service, pembulatan.
-- Member pelanggan + poin loyalitas otomatis saat transaksi sukses.
-- Inventory virtual + alert stok menipis.
-- Notifikasi Telegram: transaksi, refund, shift, stok menipis, rekap harian.
-- Laporan kas harian + export CSV/PDF.
-- Audit log operasional (file log + halaman web).
+Repository ini bernama **kasir-pintar**, sedangkan nama produk/aplikasinya tetap **KASPINDO**.
 
-## Role dan Akses
-- `admin`
-  - Akses penuh dashboard, master data, kas harian, audit, pengaturan Telegram, member.
-  - Bisa input kas (`cash_in`, `cash_out`) dan tutup shift dengan kas akhir.
-- `bos`
-  - Akses laporan, kas harian, audit, shift, kasir, member (view/monitor).
-  - Bisa input kas (`cash_in`, `cash_out`) dan tutup shift dengan kas akhir.
-- `karyawan`
-  - Fokus operasional kasir + riwayat transaksi + absensi shift.
-  - Hanya bisa mulai/selesai shift (tidak bisa input kas harian).
+## Sorotan
 
-## Modul Penting
-- `public/kasir.php`: POS transaksi.
-- `public/shift.php`: absensi shift + kontrol kas berdasarkan role.
-- `public/kasir_history.php`: riwayat transaksi kasir.
-- `public/print_receipt.php`: print struk.
-- `public/admin_cash_report.php`: laporan kas harian.
-- `public/admin_cash_report_csv.php`: export CSV kas harian.
-- `public/admin_cash_report_pdf.php`: export PDF kas harian.
-- `public/admin_audit.php`: audit log berbasis web.
-- `public/admin_refunds.php`: refund/retur.
-- `public/admin_customers.php`: manajemen member pelanggan.
-- `public/admin_notifications.php`: konfigurasi Telegram.
-- `public/admin_inventory.php`: manajemen stok virtual.
-- `public/admin_transactions.php`: kontrol/hapus data transaksi.
+- POS kasir untuk desktop dan mobile.
+- Transaksi kasir dengan alur shift aktif.
+- Scan SKU/barcode dari kolom pencarian kasir.
+- Hold transaksi untuk menyimpan dan melanjutkan keranjang.
+- Kontrol kas harian: kas masuk, kas keluar, sales cash, QRIS, refund, dan selisih kas.
+- Promo dan pricing engine: diskon item, diskon order, voucher, pajak, service, dan pembulatan.
+- Member pelanggan dan poin loyalitas otomatis.
+- Inventory virtual dengan alert stok menipis.
+- Refund/retur yang terhubung ke laporan kas.
+- Laporan kas dan transaksi dengan export CSV/PDF.
+- Notifikasi Telegram untuk aktivitas operasional penting.
+- Live support internal untuk toko dan superadmin.
+- Panel superadmin untuk approval mitra, toko aktif, user tenant, custom domain, maintenance, dan health check.
+- Backup database terjadwal dengan opsi integrasi penyimpanan eksternal.
 
-## Persyaratan
+## Role Aplikasi
+
+- `admin`: mengelola operasional toko, master data, kas, laporan, member, stok, notifikasi, dan pengaturan toko.
+- `bos`: memantau laporan, shift, kas, transaksi, stok, member, dan support.
+- `karyawan`: fokus pada kasir, shift, dan riwayat transaksi sesuai izin yang diberikan.
+- `superadmin`: mengelola tenant/toko, approval mitra, domain, user lintas toko, maintenance, backup, dan monitoring sistem.
+
+## Teknologi
+
 - PHP 8.x
-- MySQL 5.7+ / MariaDB
-- XAMPP/Laragon/LAMP
-- Ekstensi PHP: `pdo_mysql`, `curl`, `fileinfo`
+- MySQL 5.7+ atau MariaDB
+- PDO MySQL
+- HTML/CSS/JavaScript
+- Playwright untuk smoke test browser
+- XAMPP, Laragon, LAMP, atau server PHP sejenis
 
-## Instalasi (XAMPP)
-1. Taruh proyek ke `C:\xampp\htdocs\kaspindo`.
-2. Buat database (ikuti nama di `app/config/database.php`, default saat ini `kaspindo`).
-3. Import skema awal: `database/schema.sql`.
-4. Atur koneksi DB di `app/config/database.php`.
-5. Akses aplikasi: `http://localhost/kaspindo/public`.
+Ekstensi PHP yang disarankan:
 
-## Migrasi Otomatis
-Saat aplikasi berjalan, sistem akan memastikan tabel tambahan tersedia lewat helper migrasi.
+- `pdo_mysql`
+- `curl`
+- `openssl`
+- `zlib`
+- `fileinfo`
 
-Tabel tambahan yang dipakai:
-- `shifts`, `shift_movements`
-- `inventory_items`, `inventory_logs`
-- `promo_settings`, `promo_vouchers`
-- `refunds`, `refund_items`
-- `transaction_meta`
-- `customers`, `customer_point_logs`
-- `notification_settings`
+## Instalasi Lokal
 
-Pastikan user DB punya izin `CREATE` dan `ALTER`.
+1. Clone repository ke folder web server.
 
-## Alur Member dan Poin
-- Member dipilih saat checkout di halaman kasir (`customer_id`).
-- Jika transaksi sukses, sistem menambah poin member otomatis.
-- Formula poin default: `floor(total / 10000)`.
-- Riwayat poin disimpan di `customer_point_logs`.
-- Metadata member + poin transaksi ikut tersimpan di `transaction_meta`.
-- Informasi member tampil di struk dan riwayat transaksi.
+   ```bash
+   git clone https://github.com/mhmdhabibrafi/kasir-pintar.git kaspindo
+   ```
 
-## Konfigurasi Telegram
-Bisa diatur dari menu admin: `admin_notifications.php`.
+2. Buat database MySQL/MariaDB, misalnya:
 
-Sumber konfigurasi:
-1. Database (`notification_settings`) - prioritas utama.
-2. Environment variable (fallback):
-   - `TELEGRAM_BOT_TOKEN`
-   - `TELEGRAM_CHAT_ID`
+   ```sql
+   CREATE DATABASE kaspindo CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+   ```
 
-Contoh PowerShell sementara:
-```powershell
-$env:TELEGRAM_BOT_TOKEN="isi_token"
-$env:TELEGRAM_CHAT_ID="-1001234567890"
+3. Import skema awal:
+
+   ```bash
+   mysql -u root -p kaspindo < database/schema.sql
+   ```
+
+4. Salin file konfigurasi environment:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   Di Windows PowerShell:
+
+   ```powershell
+   Copy-Item .env.example .env
+   ```
+
+5. Sesuaikan nilai database di `.env`.
+
+6. Akses aplikasi dari browser:
+
+   ```text
+   http://localhost/kaspindo/public
+   ```
+
+## Konfigurasi Environment
+
+Gunakan `.env.example` sebagai template. Nilai production seperti password database, token Telegram, credential backup, dan domain asli tidak boleh disimpan di repository.
+
+Konfigurasi utama:
+
+- `DB_HOST`
+- `DB_PORT`
+- `DB_NAME`
+- `DB_USER`
+- `DB_PASS`
+- `APP_URL`
+- `APP_BASE_PATH`
+- `APP_FORCE_HTTPS`
+- `APP_PLATFORM_HOSTS`
+- `APP_DOMAIN_TARGET`
+- `APP_SUPPORT_ENABLED`
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_CHAT_ID`
+
+Untuk mode SaaS/custom domain, arahkan domain mitra ke server pusat, lalu daftarkan domain tersebut dari panel superadmin. Detail operasional production sebaiknya disimpan di dokumentasi privat.
+
+## Struktur Project
+
+```text
+app/        Core aplikasi: auth, helper, model, view, dan logic operasional
+database/   Skema, migrasi, dan utilitas database
+public/     Entry point web yang aman dijadikan document root
+routes/     Routing aplikasi
+tests/      Smoke test dan E2E test
+storage/    Data runtime lokal, log, cache, dan credential private
+backup/     Output backup runtime
 ```
 
-Opsi notifikasi yang tersedia:
-- Transaksi sukses.
-- Refund.
-- Shift (buka/tutup/pergerakan kas).
-- Stok menipis setelah transaksi.
-- Rekap harian otomatis (`HH:MM`).
+Folder runtime seperti `storage/`, `backup/`, `public/uploads/`, `scratch/`, dan `node_modules/` tidak ikut dipush ke repository.
 
-## Kas Harian
-Halaman: `admin_cash_report.php`
+## Migrasi Database
 
-Isi laporan:
-- Rekap per tanggal: `cash_in`, `cash_out`, `sales_cash`, `refund_cash`, `net_cash`, `sales_qris`, `refund_qris`, `net_qris`.
-- Detail per shift: kas awal, arus kas, expected cash, kas akhir, selisih, sales QRIS.
+Aplikasi memiliki helper migrasi otomatis untuk memastikan tabel dan kolom tambahan tersedia saat aplikasi berjalan. User database perlu memiliki izin `CREATE` dan `ALTER` pada environment yang menjalankan migrasi.
 
-Export:
-- CSV: `admin_cash_report_csv.php`
-- PDF: `admin_cash_report_pdf.php`
+Untuk instalasi baru, tetap import `database/schema.sql` terlebih dahulu.
 
-## Audit Log
-- Halaman web: `admin_audit.php`
-- File log: `storage/logs/audit.log`
-- Security log: `storage/logs/security.log`
+## Testing
 
-Log mencakup aksi penting seperti buka/tutup shift, pergerakan kas, refund, dan aktivitas admin lain.
+Install dependency test:
 
-## Reset Data (kecuali users/roles)
-Gunakan:
-- `database/clear_all_data.sql`
+```bash
+npm install
+npx playwright install chromium
+```
 
-Jalankan via phpMyAdmin:
-- Pilih database
-- Import `database/clear_all_data.sql`
+Jalankan smoke test:
 
-## Checklist Uji Cepat
-- Login/logout semua role.
-- Karyawan tidak bisa akses URL admin/bos.
-- Karyawan tidak bisa input `cash_in/cash_out`.
-- Admin/bos bisa input kas ke shift aktif.
-- POS menolak transaksi jika shift belum dibuka.
-- Scan SKU di kasir (`Enter`) menambah item yang tepat.
-- Hold transaksi simpan dan load ulang dengan benar.
-- Transaksi member menambah poin dan tampil di struk.
-- Refund tercatat dan mempengaruhi laporan kas.
-- Telegram kirim notifikasi sesuai toggle yang diaktifkan.
-- Export CSV/PDF kas harian berhasil.
-- Audit log muncul di `admin_audit.php`.
+```bash
+E2E_BASE_URL=http://localhost/kaspindo/public npm run test:e2e
+```
+
+Untuk test yang mengubah data, aktifkan flag khusus di environment test/staging saja.
 
 ## Backup dan Restore
-- Backup: export database via phpMyAdmin.
-- Restore: import SQL ke database tujuan.
+
+Backup database bisa dijalankan dari panel admin/superadmin sesuai konfigurasi server. File dump, credential service account, log, dan konfigurasi backup runtime harus tetap berada di storage private dan tidak dipush ke repository.
+
+Restore dilakukan dengan mengimpor file SQL backup ke database tujuan, lalu membuka aplikasi agar migrasi otomatis menyesuaikan struktur terbaru.
+
+## Catatan Deploy
+
+- Arahkan document root server ke folder `public/` jika memungkinkan.
+- Jangan overwrite `.env` production saat deploy.
+- Pastikan folder runtime dapat ditulis oleh web server.
+- Simpan credential backup dan token integrasi di luar repository.
+- Jalankan smoke test login, shift, kasir, refund, laporan, notifikasi, backup, dan custom domain setelah deploy.
+
+## Keamanan Repository
+
+Repository ini disiapkan agar aman untuk source control:
+
+- `.env` dan varian environment lokal di-ignore.
+- Log, cache, upload user, credential JSON, backup dump, dan file eksperimen lokal di-ignore.
+- README publik hanya berisi dokumentasi penggunaan umum, bukan SOP detail production.
+- Detail domain asli, token, credential, dan strategi operasional internal sebaiknya tetap disimpan di dokumentasi privat.
+
+Jika repository dibuat publik, source code tetap dapat dipelajari oleh orang lain. Untuk melindungi kode dan gaya implementasi secara maksimal, gunakan repository private atau lisensi proprietary.
+
+## Checklist Uji Cepat
+
+- Login/logout untuk semua role.
+- User tanpa izin tidak bisa membuka halaman admin.
+- POS menolak transaksi jika shift belum aktif.
+- Scan SKU/barcode menambahkan produk yang tepat.
+- Hold transaksi bisa disimpan dan dilanjutkan.
+- Kas masuk/keluar tercatat pada shift yang sesuai.
+- Refund memengaruhi laporan kas.
+- Member mendapat poin setelah transaksi sukses.
+- Export CSV/PDF berjalan.
+- Notifikasi Telegram terkirim sesuai konfigurasi.
+- Superadmin dapat mengelola toko, user tenant, status toko, dan custom domain.
+- Backup manual/terjadwal berhasil pada environment yang dikonfigurasi.
 
 ## Changelog
-Lihat `CHANGELOG.md`.
+
+Lihat [CHANGELOG.md](CHANGELOG.md).
+
+## Lisensi
+
+Kode ini menggunakan lisensi proprietary. Lihat [LICENSE](LICENSE).

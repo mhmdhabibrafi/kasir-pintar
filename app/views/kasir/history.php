@@ -149,10 +149,23 @@ if (!empty($transactions)) {
                 <?php endif; ?>
             </div>
             <div class="mt-3">
-                <a class="btn kp-btn-primary btn-sm d-inline-flex align-items-center gap-2" target="_blank" href="<?php echo e(base_url('print_receipt.php?id=' . (int) $row['id'])); ?>">
-                    <span class="material-icons-outlined">print</span>
-                    Print Struk
-                </a>
+                <div class="d-flex flex-wrap gap-2">
+                    <?php if (!empty($canPrintReceipt)): ?>
+                        <a class="btn kp-btn-primary btn-sm d-inline-flex align-items-center gap-2" target="_blank" href="<?php echo e(base_url('print_receipt.php?id=' . (int) $row['id'] . '&autoprint=1')); ?>">
+                            <span class="material-icons-outlined">print</span>
+                            Print Struk
+                        </a>
+                    <?php endif; ?>
+                    <?php if (!empty($canBluetoothPrint)): ?>
+                        <a class="btn kp-btn-ghost btn-sm d-inline-flex align-items-center gap-2" target="_blank" href="<?php echo e(base_url('print_receipt.php?id=' . (int) $row['id'] . '&bluetooth=1')); ?>">
+                            <span class="material-icons-outlined">bluetooth</span>
+                            Bluetooth
+                        </a>
+                    <?php endif; ?>
+                    <?php if (empty($canPrintReceipt) && empty($canBluetoothPrint)): ?>
+                        <div class="kp-muted small">Cetak struk dinonaktifkan untuk akun ini.</div>
+                    <?php endif; ?>
+                </div>
             </div>
         </div>
     <?php endforeach; ?>

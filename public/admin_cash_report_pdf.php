@@ -42,7 +42,9 @@ $filters['printed_role'] = $user['role'] ?? '';
 $pdf = build_cash_report_pdf($dailyRecap, $dailyTotals, $shiftRows, $shiftTotals, $filters);
 $filename = sprintf('kas_harian_%s_%s.pdf', $filters['start_date'], $filters['end_date']);
 header('Content-Type: application/pdf');
-header('Content-Disposition: inline; filename=' . $filename);
+header('Content-Disposition: inline; filename="' . $filename . '"');
+header('Cache-Control: private, max-age=0, must-revalidate');
+header('Pragma: public');
 header('Content-Length: ' . strlen($pdf));
 
 echo $pdf;

@@ -7,11 +7,12 @@ require_once __DIR__ . '/../app/auth/middleware.php';
 require_once __DIR__ . '/../app/helpers/format_helper.php';
 require_once __DIR__ . '/../app/helpers/shift_helper.php';
 require_once __DIR__ . '/../app/helpers/refund_helper.php';
-require_once __DIR__ . '/../app/helpers/telegram_helper.php';
+require_once __DIR__ . '/../app/helpers/user_permission_helper.php';
 
 require_role(['admin', 'bos', 'karyawan']);
 
 $user = current_user();
+user_permission_guard($user, 'access_shift', 'Admin menonaktifkan akses halaman shift untuk akun ini.');
 $userId = (int) ($user['id'] ?? 0);
 $role = $user['role'] ?? '';
 $canManageCash = in_array($role, ['admin', 'bos'], true);
@@ -32,40 +33,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $note = $canManageCash ? trim((string) ($_POST['note'] ?? '')) : '';
                 $shift = shift_open($userId, (string) ($user['name'] ?? 'Kasir'), $openingCash, $note);
                 $success = 'Shift berhasil dibuka. ID: ' . ($shift['shift_id'] ?? '-');
-                if (telegram_can_send('shift')) {
-                    $lines = [];
-                    $lines[] = 'KASPINDO';
-                    $lines[] = 'Shift Dibuka';
-                    $lines[] = str_repeat('-', 30);
-                    $lines[] = 'Shift ID    : ' . (string) ($shift['shift_id'] ?? '-');
-                    $lines[] = 'Kasir       : ' . (string) ($user['name'] ?? '-');
-                    $lines[] = 'Kas Awal    : ' . format_rupiah($openingCash);
-                    $lines[] = 'Catatan     : ' . ($note !== '' ? $note : '-');
-                    $lines[] = 'Waktu       : ' . date('d/m/Y H:i:s');
-                    telegram_send_message('<pre>' . telegram_escape(implode("\n", $lines)) . '</pre>', 'HTML');
-                }
             }
         } elseif ($action === 'close') {
             $existingShift = shift_get_active($userId);
             if (!$existingShift) {
                 $errors[] = 'Shift aktif tidak ditemukan.';
             } else {
-                $closingCash = $canManageCash ? max(0.0, (float) ($_POST['closing_cash'] ?? 0)) : 0.0;
-                $note = $canManageCash ? trim((string) ($_POST['note'] ?? '')) : '';
+                $closeSummary = shift_summary((string) ($existingShift['shift_id'] ?? ''));
+                $expectedCash = shift_expected_cash($existingShift, $closeSummary);
+                $closingCashRaw = trim((string) ($_POST['closing_cash'] ?? ''));
+                $closingCash = $canManageCash && $closingCashRaw !== ''
+                    ? max(0.0, (float) $closingCashRaw)
+                    : $expectedCash;
+                $note = $canManageCash ? trim((string) ($_POST['note'] ?? '')) : 'Ditutup sesuai estimasi kas sistem.';
                 $shift = shift_close($userId, $closingCash, $note);
                 if ($shift) {
                     $success = 'Shift berhasil ditutup.';
-                    if (telegram_can_send('shift')) {
-                        $lines = [];
-                        $lines[] = 'KASPINDO';
-                        $lines[] = 'Shift Ditutup';
-                        $lines[] = str_repeat('-', 30);
-                        $lines[] = 'Shift ID    : ' . (string) ($shift['shift_id'] ?? '-');
-                        $lines[] = 'Kasir       : ' . (string) ($user['name'] ?? '-');
-                        $lines[] = 'Kas Akhir   : ' . format_rupiah($closingCash);
-                        $lines[] = 'Catatan     : ' . ($note !== '' ? $note : '-');
-                        $lines[] = 'Waktu       : ' . date('d/m/Y H:i:s');
-                        telegram_send_message('<pre>' . telegram_escape(implode("\n", $lines)) . '</pre>', 'HTML');
+                    $diffCash = $closingCash - $expectedCash;
+                    if (abs($diffCash) > 0.0001) {
+                        $success .= ' Selisih kas: ' . format_rupiah($diffCash) . '.';
                     }
                 } else {
                     $errors[] = 'Shift aktif tidak ditemukan.';
@@ -93,19 +79,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $errors[] = 'Shift target tidak ditemukan atau sudah ditutup.';
                         } else {
                             $success = $type === 'in' ? 'Cash in berhasil dicatat.' : 'Cash out berhasil dicatat.';
-                            if (telegram_can_send('shift')) {
-                                $lines = [];
-                                $lines[] = 'KASPINDO';
-                                $lines[] = 'Pergerakan Kas Shift';
-                                $lines[] = str_repeat('-', 30);
-                                $lines[] = 'Shift ID    : ' . $targetShiftCode;
-                                $lines[] = 'Kasir       : ' . (string) ($user['name'] ?? '-');
-                                $lines[] = 'Tipe        : ' . ($type === 'in' ? 'CASH IN' : 'CASH OUT');
-                                $lines[] = 'Nominal     : ' . format_rupiah($amount);
-                                $lines[] = 'Catatan     : ' . ($note !== '' ? $note : '-');
-                                $lines[] = 'Waktu       : ' . date('d/m/Y H:i:s');
-                                telegram_send_message('<pre>' . telegram_escape(implode("\n", $lines)) . '</pre>', 'HTML');
-                            }
                         }
                     }
                 }
@@ -115,15 +88,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $activeShift = shift_get_active($userId);
-$shiftBalance = $activeShift ? shift_cash_balance($activeShift) : 0.0;
 $shiftSummary = $activeShift ? shift_summary((string) ($activeShift['shift_id'] ?? '')) : null;
-
-$store = shift_store();
-$history = $store['history'] ?? [];
-$activeShifts = array_values($store['active'] ?? []);
-if (!in_array($role, ['admin', 'bos'], true)) {
-    $history = array_values(array_filter($history, static fn ($item) => (int) ($item['user_id'] ?? 0) === $userId));
-}
+$shiftBalance = $activeShift ? shift_expected_cash($activeShift, $shiftSummary) : 0.0;
+$shiftMovementTotals = $activeShift ? shift_movement_totals($activeShift) : ['cash_in' => 0.0, 'cash_out' => 0.0];
+$openingCashSuggestion = $canManageCash ? shift_suggest_opening_cash($userId) : 0.0;
+$activeShifts = $canManageCash ? shift_active_list(false) : [];
+$history = shift_recent_history($canManageCash ? 80 : 40, $canManageCash ? null : $userId);
 
 $title = 'Shift & Kas';
 

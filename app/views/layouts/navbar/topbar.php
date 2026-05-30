@@ -1,62 +1,46 @@
 <?php
-
-declare(strict_types=1);
-
 require_once __DIR__ . '/../../../helpers/auth_helper.php';
-require_once __DIR__ . '/../../../helpers/telegram_helper.php';
 
 $user = current_user();
-$user = $user ?: null;
-if ($user) {
-    telegram_maybe_send_daily_recap();
-}
 $role = $user['role'] ?? 'guest';
 $pageTitle = $pageTitle ?? $title ?? 'Dashboard';
 $todayLabel = date('d M Y');
-
-$roleStyles = [
-    'admin' => 'bg-primary-subtle text-primary',
-    'bos' => 'bg-warning-subtle text-warning',
-    'karyawan' => 'bg-success-subtle text-success',
-];
-
-$roleClass = $roleStyles[$role] ?? 'bg-secondary-subtle text-secondary';
 $roleLabel = $role !== 'guest' ? __('role.' . $role) : 'guest';
 ?>
 
-<nav class="navbar kp-topbar">
-    <div class="container-fluid px-4">
-        <div class="d-flex justify-content-between align-items-center w-100 kp-topbar-layout">
-            <div class="kp-topbar-left">
-                <div class="d-flex align-items-center gap-2 d-lg-none kp-topbar-brand">
-                    <div class="kp-logo-wrap sm">
-                        <img src="<?php echo e(base_url('assets/images/logo.jpg')); ?>" alt="KASPINDO">
-                    </div>
-                    <div class="kp-brand">KASPINDO</div>
-                </div>
-                <div class="fw-semibold kp-topbar-title"><?php echo e($pageTitle); ?></div>
-                <div class="kp-muted small d-none d-md-block kp-topbar-date"><?php echo e($todayLabel); ?></div>
+<nav class="kp-topbar w-full">
+    <div class="w-full px-6 flex justify-between items-center h-full">
+        <div class="flex items-center gap-4">
+            <button class="lg:hidden p-2 rounded-lg hover:bg-slate-100" type="button" data-bs-toggle="offcanvas" data-bs-target="#sidebarDrawer">
+                <span class="material-icons-outlined">menu</span>
+            </button>
+            <div>
+                <h2 class="text-lg font-bold text-slate-900 leading-none mb-1"><?php echo e($pageTitle); ?></h2>
+                <p class="text-xs font-medium text-slate-400 uppercase tracking-widest"><?php echo e($todayLabel); ?></p>
             </div>
-            <div class="d-flex align-items-center gap-3 kp-topbar-user">
-                <?php if ($user): ?>
-                    <div class="d-flex align-items-center gap-2 kp-user-block">
-                        <span class="kp-avatar">
-                            <span class="material-icons-outlined">person</span>
-                        </span>
-                        <div class="kp-user-meta">
-                            <div class="d-flex flex-wrap align-items-center gap-2">
-                                <span class="fw-semibold"><?php echo e($user['name']); ?></span>
-                                <span class="badge <?php echo e($roleClass); ?>"><?php echo e($roleLabel); ?></span>
-                            </div>
-                        </div>
+        </div>
+
+        <div class="flex items-center gap-4">
+            <?php if ($user): ?>
+                <div class="hidden md:flex items-center gap-3 px-3 py-2 rounded-xl bg-slate-50 border border-slate-100">
+                    <div class="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center text-white text-xs font-bold shadow-sm">
+                        <?php echo e(substr($user['name'] ?? 'U', 0, 1)); ?>
                     </div>
-                    <a class="kp-icon-btn kp-logout-btn" href="<?php echo e(base_url('logout.php')); ?>" title="<?php echo e(__('topbar.logout')); ?>">
+                    <div>
+                        <p class="text-xs font-bold text-slate-900 leading-none mb-1"><?php echo e($user['name']); ?></p>
+                        <p class="text-[10px] text-slate-400 uppercase font-bold tracking-tight"><?php echo e($roleLabel); ?></p>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <a href="<?php echo e(base_url('shift.php')); ?>" class="p-2 rounded-xl text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 transition-all" title="Shift Status">
+                        <span class="material-icons-outlined">schedule</span>
+                    </a>
+                    <a href="<?php echo e(base_url('logout.php')); ?>" class="p-2 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all" title="Keluar">
                         <span class="material-icons-outlined">logout</span>
                     </a>
-                <?php else: ?>
-                    <span class="kp-muted"><?php echo e(__('topbar.not_logged_in')); ?></span>
-                <?php endif; ?>
-            </div>
+                </div>
+            <?php endif; ?>
         </div>
     </div>
 </nav>

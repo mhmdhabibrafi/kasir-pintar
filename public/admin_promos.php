@@ -10,6 +10,8 @@ require_role(['admin', 'bos']);
 
 $errors = [];
 $success = '';
+$currentUser = current_user();
+$isAdmin = ($currentUser['role'] ?? '') === 'admin';
 
 $config = promo_get_config();
 $defaults = $config['defaults'] ?? [];
@@ -18,6 +20,8 @@ $vouchers = $config['vouchers'] ?? [];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_validate($_POST['csrf_token'] ?? null)) {
         $errors[] = 'Permintaan tidak valid. Silakan muat ulang halaman.';
+    } elseif (!$isAdmin) {
+        $errors[] = 'Akses terbatas. Hanya admin yang dapat mengubah promo dan pajak.';
     } else {
         $action = (string) ($_POST['action'] ?? '');
         if ($action === 'update_defaults') {

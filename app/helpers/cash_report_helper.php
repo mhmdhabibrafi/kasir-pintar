@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/db_migration_helper.php';
 require_once __DIR__ . '/shift_helper.php';
+require_once __DIR__ . '/tenant_helper.php';
 
 function cash_report_date_range(string $startDate, string $endDate): array
 {
@@ -40,10 +41,10 @@ function cash_report_daily(string $startDate, string $endDate): array
     $stmt = $pdo->prepare(
         'SELECT DATE(created_at) AS day, movement_type, COALESCE(SUM(amount), 0) AS total
          FROM shift_movements
-         WHERE DATE(created_at) BETWEEN :start_date AND :end_date
+         WHERE DATE(created_at) BETWEEN :start_date AND :end_date' . tenant_where_clause($pdo, 'shift_movements', 'shift_movements', 'AND') . '
          GROUP BY DATE(created_at), movement_type'
     );
-    $stmt->execute([':start_date' => $startDate, ':end_date' => $endDate]);
+    $stmt->execute(tenant_bind([':start_date' => $startDate, ':end_date' => $endDate], $pdo));
     foreach ($stmt->fetchAll() as $row) {
         $day = (string) $row['day'];
         if (!isset($days[$day])) {
@@ -61,10 +62,10 @@ function cash_report_daily(string $startDate, string $endDate): array
     $trxStmt = $pdo->prepare(
         'SELECT DATE(created_at) AS day, payment_method, COALESCE(SUM(grand_total), 0) AS total
          FROM transaction_meta
-         WHERE DATE(created_at) BETWEEN :start_date AND :end_date
+         WHERE DATE(created_at) BETWEEN :start_date AND :end_date' . tenant_where_clause($pdo, 'transaction_meta', 'transaction_meta', 'AND') . '
          GROUP BY DATE(created_at), payment_method'
     );
-    $trxStmt->execute([':start_date' => $startDate, ':end_date' => $endDate]);
+    $trxStmt->execute(tenant_bind([':start_date' => $startDate, ':end_date' => $endDate], $pdo));
     foreach ($trxStmt->fetchAll() as $row) {
         $day = (string) $row['day'];
         if (!isset($days[$day])) {
@@ -82,10 +83,10 @@ function cash_report_daily(string $startDate, string $endDate): array
     $refundStmt = $pdo->prepare(
         'SELECT DATE(created_at) AS day, method, COALESCE(SUM(amount), 0) AS total
          FROM refunds
-         WHERE DATE(created_at) BETWEEN :start_date AND :end_date
+         WHERE DATE(created_at) BETWEEN :start_date AND :end_date' . tenant_where_clause($pdo, 'refunds', 'refunds', 'AND') . '
          GROUP BY DATE(created_at), method'
     );
-    $refundStmt->execute([':start_date' => $startDate, ':end_date' => $endDate]);
+    $refundStmt->execute(tenant_bind([':start_date' => $startDate, ':end_date' => $endDate], $pdo));
     foreach ($refundStmt->fetchAll() as $row) {
         $day = (string) $row['day'];
         if (!isset($days[$day])) {
@@ -130,20 +131,21 @@ function shift_report_by_date_range(string $startDate, string $endDate): array
     $pdo = db();
     $stmt = $pdo->prepare(
         'SELECT * FROM shifts
-         WHERE DATE(opened_at) BETWEEN :start_date AND :end_date
+         WHERE DATE(opened_at) BETWEEN :start_date AND :end_date' . tenant_where_clause($pdo, 'shifts', 'shifts', 'AND') . '
          ORDER BY opened_at ASC'
     );
-    $stmt->execute([':start_date' => $startDate, ':end_date' => $endDate]);
+    $stmt->execute(tenant_bind([':start_date' => $startDate, ':end_date' => $endDate], $pdo));
     $rows = $stmt->fetchAll();
     if (!$rows) {
         return [];
     }
     $ids = array_map(static fn ($row) => (int) $row['id'], $rows);
     $movements = shift_movements_by_shift_ids($ids);
+    $summaries = shift_summaries(array_map(static fn ($row) => (string) $row['shift_code'], $rows));
     $result = [];
     foreach ($rows as $row) {
         $shift = shift_map_row($row, $movements[(int) $row['id']] ?? []);
-        $shift['summary'] = shift_summary((string) $shift['shift_id']);
+        $shift['summary'] = $summaries[(string) $shift['shift_id']] ?? shift_empty_summary();
         $result[] = $shift;
     }
     return $result;
@@ -173,7 +175,7 @@ function cash_report_shift_rows(string $startDate, string $endDate): array
         $salesCash = (float) ($summary['sales_cash'] ?? 0);
         $refundCash = (float) ($summary['refund_cash'] ?? 0);
         $salesQris = (float) ($summary['sales_qris'] ?? 0);
-        $expected = $opening + $cashIn - $cashOut + $salesCash - $refundCash;
+        $expected = shift_expected_cash($shift, $summary);
         $closing = isset($shift['closing_cash']) ? (float) $shift['closing_cash'] : null;
         $diff = $closing !== null ? $closing - $expected : null;
 

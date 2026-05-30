@@ -123,9 +123,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+$customerFilters = [
+    'q' => trim((string) ($_GET['q'] ?? '')),
+    'status' => trim((string) ($_GET['status'] ?? 'all')),
+];
+
+if (!in_array($customerFilters['status'], ['all', 'active', 'inactive'], true)) {
+    $customerFilters['status'] = 'all';
+}
+
 $customers = Customer::all($pdo);
+$allCustomers = $customers;
+$customers = array_values(array_filter(
+    $customers,
+    static function (array $customer) use ($customerFilters): bool {
+        if ($customerFilters['status'] === 'active' && empty($customer['is_active'])) {
+            return false;
+        }
+        if ($customerFilters['status'] === 'inactive' && !empty($customer['is_active'])) {
+            return false;
+        }
+
+        $keyword = strtolower($customerFilters['q']);
+        if ($keyword === '') {
+            return true;
+        }
+
+        $haystack = strtolower(implode(' ', array_filter([
+            (string) ($customer['name'] ?? ''),
+            (string) ($customer['phone'] ?? ''),
+            (string) ($customer['email'] ?? ''),
+        ])));
+
+        return str_contains($haystack, $keyword);
+    }
+));
+
 $summary = [
-    'total' => count($customers),
+    'all_total' => count($allCustomers),
+    'visible_total' => count($customers),
     'active' => 0,
     'points' => 0,
     'spent' => 0.0,

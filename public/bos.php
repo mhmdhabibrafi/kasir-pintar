@@ -5,13 +5,16 @@ declare(strict_types=1);
 require_once __DIR__ . '/../app/config/database.php';
 require_once __DIR__ . '/../app/auth/middleware.php';
 require_once __DIR__ . '/../app/helpers/format_helper.php';
+require_once __DIR__ . '/../app/helpers/tenant_helper.php';
 require_once __DIR__ . '/../app/helpers/refund_helper.php';
+require_once __DIR__ . '/../app/helpers/store_operations_helper.php';
 require_once __DIR__ . '/../app/models/Transaction.php';
 require_once __DIR__ . '/../app/models/Product.php';
 
 require_role(['bos']);
 
 $pdo = db();
+$user = current_user() ?? [];
 $errors = [];
 $success = '';
 
@@ -47,34 +50,42 @@ try {
         'SELECT COUNT(*) AS total_transactions
          FROM transactions
          WHERE DATE(created_at) = :today'
+         . tenant_where_clause($pdo, 'transactions', 'transactions', 'AND')
     );
-    $statsStmt->execute([':today' => $today]);
+    $statsStmt->execute(tenant_bind([':today' => $today], $pdo));
     $statsRow = $statsStmt->fetch() ?: ['total_transactions' => 0];
 
     $todayRevenueStmt = $pdo->prepare(
         'SELECT COALESCE(SUM(amount), 0) AS total_sales
          FROM payments
          WHERE DATE(created_at) = :today'
+         . tenant_where_clause($pdo, 'payments', 'payments', 'AND')
     );
-    $todayRevenueStmt->execute([':today' => $today]);
+    $todayRevenueStmt->execute(tenant_bind([':today' => $today], $pdo));
     $todaySales = (float) $todayRevenueStmt->fetchColumn();
 
     $qtyColumn = Transaction::itemQuantityColumn($pdo) ?? 'quantity';
+    $cupsTenant = tenant_multi_where_clause($pdo, [
+        'transactions' => 'transactions',
+        'transaction_items' => 'transaction_items',
+    ]);
     $cupsStmt = $pdo->prepare(
         'SELECT COALESCE(SUM(transaction_items.' . $qtyColumn . '), 0)
          FROM transaction_items
          INNER JOIN transactions ON transactions.id = transaction_items.transaction_id
          WHERE DATE(transactions.created_at) = :today'
+         . $cupsTenant['sql']
     );
-    $cupsStmt->execute([':today' => $today]);
+    $cupsStmt->execute([':today' => $today] + $cupsTenant['params']);
     $todayCups = (int) $cupsStmt->fetchColumn();
 
     $monthRevenueStmt = $pdo->prepare(
         'SELECT COALESCE(SUM(amount), 0) AS total_sales
          FROM payments
          WHERE DATE(created_at) BETWEEN :start_date AND :end_date'
+         . tenant_where_clause($pdo, 'payments', 'payments', 'AND')
     );
-    $monthRevenueStmt->execute([':start_date' => $monthStart, ':end_date' => $monthEnd]);
+    $monthRevenueStmt->execute(tenant_bind([':start_date' => $monthStart, ':end_date' => $monthEnd], $pdo));
     $monthSales = (float) $monthRevenueStmt->fetchColumn();
 
     $summary = Transaction::getPaymentSummary($pdo, $filters['start_date'], $filters['end_date']);
@@ -115,8 +126,9 @@ try {
     }
     $rangeCountStmt = $pdo->prepare(
         'SELECT COUNT(*) FROM transactions WHERE DATE(created_at) BETWEEN :start_date AND :end_date'
+        . tenant_where_clause($pdo, 'transactions', 'transactions', 'AND')
     );
-    $rangeCountStmt->execute([':start_date' => $filters['start_date'], ':end_date' => $filters['end_date']]);
+    $rangeCountStmt->execute(tenant_bind([':start_date' => $filters['start_date'], ':end_date' => $filters['end_date']], $pdo));
     $hasTransactions = (int) $rangeCountStmt->fetchColumn() > 0;
 
     $totalColumn = Transaction::totalColumn($pdo) ?? 'total_amount';
@@ -125,7 +137,8 @@ try {
               FROM transactions
               INNER JOIN users ON users.id = transactions.user_id
               LEFT JOIN payments ON payments.transaction_id = transactions.id
-              WHERE DATE(transactions.created_at) BETWEEN :start_date AND :end_date';
+              WHERE DATE(transactions.created_at) BETWEEN :start_date AND :end_date'
+              . tenant_where_clause($pdo, 'transactions', 'transactions', 'AND');
     $params = [
         ':start_date' => $filters['start_date'],
         ':end_date' => $filters['end_date'],
@@ -139,7 +152,7 @@ try {
     $query .= ' ORDER BY transactions.created_at DESC';
 
     $listStmt = $pdo->prepare($query);
-    $listStmt->execute($params);
+    $listStmt->execute(tenant_bind($params, $pdo));
     $transactions = $listStmt->fetchAll();
 
     $rangeSummary = ['sales' => 0.0, 'cost' => 0.0, 'profit' => 0.0];
@@ -148,8 +161,17 @@ try {
         $qtyColumn = Transaction::itemQuantityColumn($pdo) ?? 'quantity';
         $costColumn = Product::costColumn($pdo);
         $transactionIds = array_column($transactions, 'id');
-        $placeholders = implode(',', array_fill(0, count($transactionIds), '?'));
+        $idParams = [];
+        $placeholders = implode(',', array_map(static function (int $index) use (&$idParams, $transactionIds): string {
+            $key = ':transaction_id_' . $index;
+            $idParams[$key] = (int) $transactionIds[$index];
+            return $key;
+        }, array_keys($transactionIds)));
         $selectCost = $costColumn ? 'products.' . $costColumn . ' AS cost_price' : '0 AS cost_price';
+        $itemsTenant = tenant_multi_where_clause($pdo, [
+            'transaction_items' => 'transaction_items',
+            'products' => 'products',
+        ]);
 
         $itemsStmt = $pdo->prepare(
             'SELECT transaction_items.transaction_id,
@@ -160,10 +182,11 @@ try {
                     ' . $selectCost . '
              FROM transaction_items
              INNER JOIN products ON products.id = transaction_items.product_id
-             WHERE transaction_items.transaction_id IN (' . $placeholders . ')
+             WHERE transaction_items.transaction_id IN (' . $placeholders . ')'
+             . $itemsTenant['sql'] . '
              ORDER BY transaction_items.transaction_id'
         );
-        $itemsStmt->execute($transactionIds);
+        $itemsStmt->execute($idParams + $itemsTenant['params']);
         $items = $itemsStmt->fetchAll();
 
         $itemsByTransaction = [];
@@ -215,6 +238,8 @@ try {
 
     $rangeNetSales = max(0.0, (float) $summary['cash'] + (float) $summary['qris']);
     $rangeSales = $rangeNetSales;
+    $operationProducts = Product::all($pdo);
+    $operationsSnapshot = store_operations_snapshot($pdo, is_array($user) ? $user : [], $operationProducts);
 
     $stats = [
         'today_sales' => $todaySales,
@@ -232,6 +257,7 @@ try {
     $errors[] = 'Gagal memuat laporan. Silakan coba lagi.';
     $summary = ['cash' => 0, 'qris' => 0];
     $stats = ['today_sales' => 0, 'range_sales' => 0, 'month_sales' => 0, 'transactions_today' => 0, 'cups_range' => 0, 'revenue_series' => []];
+    $operationsSnapshot = store_operations_snapshot($pdo, is_array($user) ? $user : [], []);
     $topProducts = [];
     $revenueComparison = ['today' => 0, 'yesterday' => 0, 'diff' => 0, 'pct' => 0, 'trend' => 'up'];
     $hasTransactions = false;
@@ -239,14 +265,6 @@ try {
     $rangeSummary = ['sales' => 0.0, 'cost' => 0.0, 'profit' => 0.0];
 }
 
-if (isset($_GET['sent'])) {
-    $sent = $_GET['sent'] === '1';
-    if ($sent) {
-        $success = 'Laporan berhasil dikirim ke Telegram.';
-    } else {
-        $errors[] = 'Gagal mengirim laporan ke Telegram.';
-    }
-}
 
 $title = 'Dashboard Owner';
 require_once __DIR__ . '/../app/views/bos/dashboard.php';

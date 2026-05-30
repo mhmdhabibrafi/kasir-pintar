@@ -4,16 +4,26 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/db_migration_helper.php';
+require_once __DIR__ . '/tenant_helper.php';
 
 function refund_store(): array
 {
     ensure_update_schema();
     $pdo = db();
-    $stmt = $pdo->query(
+    $where = tenant_where_clause($pdo, 'refunds', 'refunds');
+    $stmt = $where !== '' ? $pdo->prepare(
+        'SELECT refund_code AS id, transaction_id, amount, method, reason, restock, user_id, shift_code AS shift_id, created_at
+         FROM refunds
+         ' . $where . '
+         ORDER BY created_at ASC'
+    ) : $pdo->query(
         'SELECT refund_code AS id, transaction_id, amount, method, reason, restock, user_id, shift_code AS shift_id, created_at
          FROM refunds
          ORDER BY created_at ASC'
     );
+    if ($where !== '' && $stmt instanceof PDOStatement) {
+        $stmt->execute(tenant_bind([], $pdo));
+    }
     return ['items' => $stmt->fetchAll(), 'updated_at' => date('Y-m-d H:i:s')];
 }
 
@@ -37,11 +47,12 @@ function refund_add(array $refund): array
     }
 
     try {
+        $hasStore = tenant_table_has_column($pdo, 'refunds', 'store_id');
         $stmt = $pdo->prepare(
-            'INSERT INTO refunds (refund_code, transaction_id, amount, method, reason, restock, user_id, shift_code, created_at)
-             VALUES (:refund_code, :transaction_id, :amount, :method, :reason, :restock, :user_id, :shift_code, :created_at)'
+            'INSERT INTO refunds (refund_code, transaction_id, amount, method, reason, restock, user_id, shift_code, created_at' . ($hasStore ? ', store_id' : '') . ')
+             VALUES (:refund_code, :transaction_id, :amount, :method, :reason, :restock, :user_id, :shift_code, :created_at' . ($hasStore ? ', :store_id' : '') . ')'
         );
-        $stmt->execute([
+        $params = [
             ':refund_code' => $refundCode,
             ':transaction_id' => (int) ($refund['transaction_id'] ?? 0),
             ':amount' => (float) ($refund['amount'] ?? 0),
@@ -51,20 +62,29 @@ function refund_add(array $refund): array
             ':user_id' => (int) ($refund['user_id'] ?? 0),
             ':shift_code' => $shiftCode !== '' ? $shiftCode : null,
             ':created_at' => $createdAt,
-        ]);
+        ];
+        if ($hasStore) {
+            $params[':store_id'] = tenant_active_store_id($pdo);
+        }
+        $stmt->execute($params);
 
         $refundId = (int) $pdo->lastInsertId();
         if (!empty($refund['items']) && is_array($refund['items'])) {
+            $itemHasStore = tenant_table_has_column($pdo, 'refund_items', 'store_id');
             $itemStmt = $pdo->prepare(
-                'INSERT INTO refund_items (refund_id, product_id, qty)
-                 VALUES (:refund_id, :product_id, :qty)'
+                'INSERT INTO refund_items (refund_id, product_id, qty' . ($itemHasStore ? ', store_id' : '') . ')
+                 VALUES (:refund_id, :product_id, :qty' . ($itemHasStore ? ', :store_id' : '') . ')'
             );
             foreach ($refund['items'] as $item) {
-                $itemStmt->execute([
+                $itemParams = [
                     ':refund_id' => $refundId,
                     ':product_id' => (int) ($item['product_id'] ?? 0),
                     ':qty' => (int) ($item['qty'] ?? 0),
-                ]);
+                ];
+                if ($itemHasStore) {
+                    $itemParams[':store_id'] = tenant_active_store_id($pdo);
+                }
+                $itemStmt->execute($itemParams);
             }
         }
 
@@ -118,6 +138,11 @@ function refund_list(array $filters = []): array
         $conditions[] = 'transaction_id = :transaction_id';
         $params[':transaction_id'] = (int) $transactionId;
     }
+    $tenantCondition = tenant_filter_sql($pdo, 'refunds', 'refunds');
+    if ($tenantCondition !== '' && tenant_user_store_id(null, $pdo) !== null) {
+        $conditions[] = $tenantCondition;
+        $params[':tenant_store_id'] = tenant_active_store_id($pdo);
+    }
 
     $sql = 'SELECT refund_code AS id, transaction_id, amount, method, reason, restock, user_id,
                    shift_code AS shift_id, created_at
@@ -149,6 +174,8 @@ function refund_sum_by_date_range(string $startDate, string $endDate, ?string $m
         $sql .= ' AND method = :method';
         $params[':method'] = $method;
     }
+    $sql .= tenant_where_clause($pdo, 'refunds', 'refunds', 'AND');
+    $params = tenant_bind($params, $pdo);
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     return (float) $stmt->fetchColumn();
@@ -161,10 +188,10 @@ function refund_group_by_date(string $startDate, string $endDate): array
     $stmt = $pdo->prepare(
         'SELECT DATE(created_at) AS day, COALESCE(SUM(amount), 0) AS total
          FROM refunds
-         WHERE DATE(created_at) BETWEEN :start_date AND :end_date
+         WHERE DATE(created_at) BETWEEN :start_date AND :end_date' . tenant_where_clause($pdo, 'refunds', 'refunds', 'AND') . '
          GROUP BY DATE(created_at)'
     );
-    $stmt->execute([':start_date' => $startDate, ':end_date' => $endDate]);
+    $stmt->execute(tenant_bind([':start_date' => $startDate, ':end_date' => $endDate], $pdo));
     $grouped = [];
     foreach ($stmt->fetchAll() as $row) {
         $day = (string) $row['day'];

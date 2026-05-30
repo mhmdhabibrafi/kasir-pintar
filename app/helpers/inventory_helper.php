@@ -4,12 +4,22 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/db_migration_helper.php';
+require_once __DIR__ . '/tenant_helper.php';
 
-function inventory_store(): array
+function inventory_pdo(?PDO $pdo = null): PDO
 {
     ensure_update_schema();
-    $pdo = db();
-    $stmt = $pdo->query('SELECT product_id, stock, min_stock FROM inventory_items');
+    return $pdo instanceof PDO ? $pdo : db();
+}
+
+function inventory_store(?PDO $pdo = null): array
+{
+    $pdo = inventory_pdo($pdo);
+    $where = tenant_where_clause($pdo, 'inventory_items', 'inventory_items');
+    $stmt = $where !== '' ? $pdo->prepare('SELECT product_id, stock, min_stock FROM inventory_items' . $where) : $pdo->query('SELECT product_id, stock, min_stock FROM inventory_items');
+    if ($where !== '' && $stmt instanceof PDOStatement) {
+        $stmt->execute(tenant_bind([], $pdo));
+    }
     $items = [];
     foreach ($stmt->fetchAll() as $row) {
         $items[(int) $row['product_id']] = [
@@ -25,12 +35,11 @@ function inventory_save(array $store): void
     // Deprecated: inventory now stored in database.
 }
 
-function inventory_get_item(int $productId): ?array
+function inventory_get_item(int $productId, ?PDO $pdo = null): ?array
 {
-    ensure_update_schema();
-    $pdo = db();
-    $stmt = $pdo->prepare('SELECT stock, min_stock FROM inventory_items WHERE product_id = :product_id LIMIT 1');
-    $stmt->execute([':product_id' => $productId]);
+    $pdo = inventory_pdo($pdo);
+    $stmt = $pdo->prepare('SELECT stock, min_stock FROM inventory_items WHERE product_id = :product_id' . tenant_where_clause($pdo, 'inventory_items', 'inventory_items', 'AND') . ' LIMIT 1');
+    $stmt->execute(tenant_bind([':product_id' => $productId], $pdo));
     $item = $stmt->fetch();
     if (!$item) {
         return null;
@@ -41,27 +50,32 @@ function inventory_get_item(int $productId): ?array
     ];
 }
 
-function inventory_set_item(int $productId, ?int $stock, ?int $min, int $userId, string $note = ''): void
+function inventory_set_item(int $productId, ?int $stock, ?int $min, int $userId, string $note = '', ?PDO $pdo = null): void
 {
-    ensure_update_schema();
-    $pdo = db();
+    $pdo = inventory_pdo($pdo);
     $minValue = $min ?? 0;
+    $hasStore = tenant_table_has_column($pdo, 'inventory_items', 'store_id');
     $stmt = $pdo->prepare(
-        'INSERT INTO inventory_items (product_id, stock, min_stock)
-         VALUES (:product_id, :stock, :min_stock)
+        'INSERT INTO inventory_items (product_id, stock, min_stock' . ($hasStore ? ', store_id' : '') . ')
+         VALUES (:product_id, :stock, :min_stock' . ($hasStore ? ', :store_id' : '') . ')
          ON DUPLICATE KEY UPDATE stock = VALUES(stock), min_stock = VALUES(min_stock)'
     );
-    $stmt->execute([
+    $params = [
         ':product_id' => $productId,
         ':stock' => $stock,
         ':min_stock' => $minValue,
-    ]);
+    ];
+    if ($hasStore) {
+        $params[':store_id'] = tenant_active_store_id($pdo);
+    }
+    $stmt->execute($params);
 
+    $hasLogStore = tenant_table_has_column($pdo, 'inventory_logs', 'store_id');
     $logStmt = $pdo->prepare(
-        'INSERT INTO inventory_logs (product_id, delta, stock, min_stock, reason, ref, note, user_id)
-         VALUES (:product_id, :delta, :stock, :min_stock, :reason, :ref, :note, :user_id)'
+        'INSERT INTO inventory_logs (product_id, delta, stock, min_stock, reason, ref, note, user_id' . ($hasLogStore ? ', store_id' : '') . ')
+         VALUES (:product_id, :delta, :stock, :min_stock, :reason, :ref, :note, :user_id' . ($hasLogStore ? ', :store_id' : '') . ')'
     );
-    $logStmt->execute([
+    $logParams = [
         ':product_id' => $productId,
         ':delta' => null,
         ':stock' => $stock,
@@ -70,15 +84,18 @@ function inventory_set_item(int $productId, ?int $stock, ?int $min, int $userId,
         ':ref' => null,
         ':note' => $note,
         ':user_id' => $userId,
-    ]);
+    ];
+    if ($hasLogStore) {
+        $logParams[':store_id'] = tenant_active_store_id($pdo);
+    }
+    $logStmt->execute($logParams);
 }
 
-function inventory_adjust(int $productId, int $delta, string $reason, string $ref, int $userId, string $note = ''): void
+function inventory_adjust(int $productId, int $delta, string $reason, string $ref, int $userId, string $note = '', ?PDO $pdo = null): void
 {
-    ensure_update_schema();
-    $pdo = db();
-    $stmt = $pdo->prepare('SELECT stock, min_stock FROM inventory_items WHERE product_id = :product_id LIMIT 1 FOR UPDATE');
-    $stmt->execute([':product_id' => $productId]);
+    $pdo = inventory_pdo($pdo);
+    $stmt = $pdo->prepare('SELECT stock, min_stock FROM inventory_items WHERE product_id = :product_id' . tenant_where_clause($pdo, 'inventory_items', 'inventory_items', 'AND') . ' LIMIT 1 FOR UPDATE');
+    $stmt->execute(tenant_bind([':product_id' => $productId], $pdo));
     $row = $stmt->fetch();
 
     $current = $row ? $row['stock'] : null;
@@ -88,22 +105,28 @@ function inventory_adjust(int $productId, int $delta, string $reason, string $re
     }
     $newStock = (int) $current + $delta;
 
+    $hasStore = tenant_table_has_column($pdo, 'inventory_items', 'store_id');
     $upsert = $pdo->prepare(
-        'INSERT INTO inventory_items (product_id, stock, min_stock)
-         VALUES (:product_id, :stock, :min_stock)
+        'INSERT INTO inventory_items (product_id, stock, min_stock' . ($hasStore ? ', store_id' : '') . ')
+         VALUES (:product_id, :stock, :min_stock' . ($hasStore ? ', :store_id' : '') . ')
          ON DUPLICATE KEY UPDATE stock = VALUES(stock), min_stock = VALUES(min_stock)'
     );
-    $upsert->execute([
+    $params = [
         ':product_id' => $productId,
         ':stock' => $newStock,
         ':min_stock' => $minStock,
-    ]);
+    ];
+    if ($hasStore) {
+        $params[':store_id'] = tenant_active_store_id($pdo);
+    }
+    $upsert->execute($params);
 
+    $hasLogStore = tenant_table_has_column($pdo, 'inventory_logs', 'store_id');
     $logStmt = $pdo->prepare(
-        'INSERT INTO inventory_logs (product_id, delta, stock, min_stock, reason, ref, note, user_id)
-         VALUES (:product_id, :delta, :stock, :min_stock, :reason, :ref, :note, :user_id)'
+        'INSERT INTO inventory_logs (product_id, delta, stock, min_stock, reason, ref, note, user_id' . ($hasLogStore ? ', store_id' : '') . ')
+         VALUES (:product_id, :delta, :stock, :min_stock, :reason, :ref, :note, :user_id' . ($hasLogStore ? ', :store_id' : '') . ')'
     );
-    $logStmt->execute([
+    $logParams = [
         ':product_id' => $productId,
         ':delta' => $delta,
         ':stock' => $newStock,
@@ -112,14 +135,83 @@ function inventory_adjust(int $productId, int $delta, string $reason, string $re
         ':ref' => $ref,
         ':note' => $note,
         ':user_id' => $userId,
-    ]);
+    ];
+    if ($hasLogStore) {
+        $logParams[':store_id'] = tenant_active_store_id($pdo);
+    }
+    $logStmt->execute($logParams);
 }
 
-function inventory_get_all(): array
+function inventory_reduce(int $productId, int $quantity, string $reason, string $ref, int $userId, string $note = '', ?PDO $pdo = null): bool
 {
-    ensure_update_schema();
-    $pdo = db();
-    $stmt = $pdo->query('SELECT product_id, stock, min_stock FROM inventory_items');
+    if ($quantity <= 0) {
+        return true;
+    }
+
+    $pdo = inventory_pdo($pdo);
+    $stmt = $pdo->prepare('SELECT stock, min_stock FROM inventory_items WHERE product_id = :product_id' . tenant_where_clause($pdo, 'inventory_items', 'inventory_items', 'AND') . ' LIMIT 1 FOR UPDATE');
+    $stmt->execute(tenant_bind([':product_id' => $productId], $pdo));
+    $row = $stmt->fetch();
+
+    if (!$row || $row['stock'] === null) {
+        return true;
+    }
+
+    $current = (int) $row['stock'];
+    if ($current < $quantity) {
+        return false;
+    }
+
+    $minStock = (int) ($row['min_stock'] ?? 0);
+    $newStock = $current - $quantity;
+
+    $hasStore = tenant_table_has_column($pdo, 'inventory_items', 'store_id');
+    $upsert = $pdo->prepare(
+        'INSERT INTO inventory_items (product_id, stock, min_stock' . ($hasStore ? ', store_id' : '') . ')
+         VALUES (:product_id, :stock, :min_stock' . ($hasStore ? ', :store_id' : '') . ')
+         ON DUPLICATE KEY UPDATE stock = VALUES(stock), min_stock = VALUES(min_stock)'
+    );
+    $params = [
+        ':product_id' => $productId,
+        ':stock' => $newStock,
+        ':min_stock' => $minStock,
+    ];
+    if ($hasStore) {
+        $params[':store_id'] = tenant_active_store_id($pdo);
+    }
+    $upsert->execute($params);
+
+    $hasLogStore = tenant_table_has_column($pdo, 'inventory_logs', 'store_id');
+    $logStmt = $pdo->prepare(
+        'INSERT INTO inventory_logs (product_id, delta, stock, min_stock, reason, ref, note, user_id' . ($hasLogStore ? ', store_id' : '') . ')
+         VALUES (:product_id, :delta, :stock, :min_stock, :reason, :ref, :note, :user_id' . ($hasLogStore ? ', :store_id' : '') . ')'
+    );
+    $logParams = [
+        ':product_id' => $productId,
+        ':delta' => -1 * $quantity,
+        ':stock' => $newStock,
+        ':min_stock' => $minStock,
+        ':reason' => $reason,
+        ':ref' => $ref,
+        ':note' => $note,
+        ':user_id' => $userId,
+    ];
+    if ($hasLogStore) {
+        $logParams[':store_id'] = tenant_active_store_id($pdo);
+    }
+    $logStmt->execute($logParams);
+
+    return true;
+}
+
+function inventory_get_all(?PDO $pdo = null): array
+{
+    $pdo = inventory_pdo($pdo);
+    $where = tenant_where_clause($pdo, 'inventory_items', 'inventory_items');
+    $stmt = $where !== '' ? $pdo->prepare('SELECT product_id, stock, min_stock FROM inventory_items' . $where) : $pdo->query('SELECT product_id, stock, min_stock FROM inventory_items');
+    if ($where !== '' && $stmt instanceof PDOStatement) {
+        $stmt->execute(tenant_bind([], $pdo));
+    }
     $items = [];
     foreach ($stmt->fetchAll() as $row) {
         $items[(int) $row['product_id']] = [
@@ -130,9 +222,9 @@ function inventory_get_all(): array
     return $items;
 }
 
-function inventory_low_stock(array $products): array
+function inventory_low_stock(array $products, ?PDO $pdo = null): array
 {
-    $items = inventory_get_all();
+    $items = inventory_get_all($pdo);
     $low = [];
     foreach ($products as $product) {
         $id = (int) ($product['id'] ?? 0);

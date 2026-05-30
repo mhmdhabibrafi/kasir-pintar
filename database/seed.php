@@ -103,6 +103,7 @@ if (!table_exists($pdo, 'roles') || !table_exists($pdo, 'users')) {
 ensure_role($pdo, 'admin');
 ensure_role($pdo, 'bos');
 ensure_role($pdo, 'karyawan');
+ensure_role($pdo, 'superadmin');
 
 $roleStmt = $pdo->query('SELECT id, name FROM roles');
 $roleMap = [];
@@ -124,6 +125,12 @@ $users = [
         'username' => 'admin',
         'role' => 'admin',
         'password' => 'admin123',
+    ],
+    [
+        'name' => 'Super Admin',
+        'username' => 'superadmin',
+        'role' => 'superadmin',
+        'password' => 'superadmin123',
     ],
     [
         'name' => 'Owner Cafe',
@@ -214,4 +221,4 @@ if (table_exists($pdo, 'categories') && column_exists($pdo, 'categories', 'name'
     }
 }
 
-echo "Seed selesai. Akun default: admin/admin123, owner/bos123, kasir/kasir123\n";
+echo "Seed selesai. Akun default: superadmin/superadmin123, admin/admin123, owner/bos123, kasir/kasir123\n";

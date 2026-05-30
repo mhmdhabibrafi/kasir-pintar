@@ -7,7 +7,9 @@ require_once __DIR__ . '/../config/app.php';
 function start_session(): void
 {
     if (session_status() === PHP_SESSION_NONE) {
-        $secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
+        $secure = function_exists('app_request_is_https')
+            ? app_request_is_https()
+            : (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
         $params = session_get_cookie_params();
         session_set_cookie_params([
             'lifetime' => 0,
@@ -56,7 +58,13 @@ function login_user(array $user): void
         'name' => $user['name'],
         'username' => $user['username'],
         'role' => $user['role'],
+        'store_id' => isset($user['store_id']) && (int) $user['store_id'] > 0 ? (int) $user['store_id'] : null,
     ];
+    if (isset($user['permissions']) && is_array($user['permissions'])) {
+        $_SESSION['user']['permissions'] = $user['permissions'];
+    } elseif (array_key_exists('permissions_json', $user)) {
+        $_SESSION['user']['permissions_json'] = $user['permissions_json'];
+    }
     $_SESSION['created_at'] = $now;
     $_SESSION['last_activity'] = $now;
 }
@@ -86,6 +94,8 @@ function logout_user(): void
 function role_redirect(string $role): string
 {
     switch ($role) {
+        case 'superadmin':
+            return base_url('superadmin_store_requests.php?focus=overview');
         case 'admin':
             return base_url('admin.php');
         case 'bos':
@@ -153,6 +163,13 @@ function audit_log(string $message, array $context = []): void
         );
     }
     log_event('audit.log', $message, $context);
+    $telegramHelperPath = __DIR__ . '/telegram_helper.php';
+    if (!function_exists('telegram_notify_audit') && is_file($telegramHelperPath)) {
+        require_once $telegramHelperPath;
+    }
+    if (function_exists('telegram_notify_audit')) {
+        telegram_notify_audit($message, $context);
+    }
 }
 
 function security_log(string $message, array $context = []): void

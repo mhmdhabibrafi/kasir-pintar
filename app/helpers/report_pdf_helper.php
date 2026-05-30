@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../lib/fpdf/fpdf.php';
 require_once __DIR__ . '/format_helper.php';
+require_once __DIR__ . '/store_info_helper.php';
 
 function pdf_text(string $text): string
 {
@@ -30,8 +31,133 @@ function pdf_truncate(string $text, int $max): string
     return rtrim(substr($text, 0, $max - 3)) . '...';
 }
 
+function pdf_format_date(?string $value): string
+{
+    $timestamp = strtotime((string) $value);
+    return $timestamp ? date('d/m/Y', $timestamp) : '-';
+}
+
+function pdf_format_datetime(?string $value): string
+{
+    $timestamp = strtotime((string) $value);
+    return $timestamp ? date('d/m/Y H:i', $timestamp) : '-';
+}
+
+function pdf_money(float $value): string
+{
+    return format_rupiah($value);
+}
+
+function pdf_draw_kpi_cards(BasePDF $pdf, array $cards, float $y, float $height = 16): void
+{
+    if (empty($cards)) {
+        return;
+    }
+
+    $left = $pdf->contentLeft();
+    $right = $pdf->contentRightMargin();
+    $usableWidth = $pdf->GetPageWidth() - $left - $right;
+    $gap = 4.0;
+    $count = count($cards);
+    $width = ($usableWidth - ($gap * ($count - 1))) / $count;
+
+    foreach (array_values($cards) as $index => $card) {
+        $x = $left + ($index * ($width + $gap));
+        $pdf->SetXY($x, $y);
+        $pdf->SetDrawColor(226, 232, 240);
+        $pdf->SetFillColor(248, 250, 252);
+        $pdf->Rect($x, $y, $width, $height, 'DF');
+        $pdf->SetXY($x + 3, $y + 2);
+        $pdf->SetFont('Arial', '', 7.5);
+        $pdf->SetTextColor(100, 116, 139);
+        $pdf->Cell($width - 6, 4, pdf_text((string) ($card['label'] ?? '')), 0, 2, 'L');
+        $pdf->SetFont('Arial', 'B', 9.5);
+        $pdf->SetTextColor(15, 23, 42);
+        $pdf->Cell($width - 6, 5, pdf_text(pdf_truncate((string) ($card['value'] ?? '-'), 30)), 0, 2, 'L');
+        if (!empty($card['note'])) {
+            $pdf->SetFont('Arial', '', 6.8);
+            $pdf->SetTextColor(100, 116, 139);
+            $pdf->Cell($width - 6, 4, pdf_text(pdf_truncate((string) $card['note'], 34)), 0, 2, 'L');
+        }
+    }
+
+    $pdf->SetTextColor(15, 23, 42);
+    $pdf->SetY($y + $height + 7);
+}
+
+function pdf_detect_image_type(string $path): string
+{
+    if (!is_file($path)) {
+        return '';
+    }
+
+    $info = @getimagesize($path);
+    $type = (int) ($info[2] ?? 0);
+    if ($type === IMAGETYPE_JPEG) {
+        return 'JPG';
+    }
+    if ($type === IMAGETYPE_PNG) {
+        return 'PNG';
+    }
+    if ($type === IMAGETYPE_GIF) {
+        return 'GIF';
+    }
+
+    return '';
+}
+
+function pdf_draw_image_safe(FPDF $pdf, string $path, float $x, float $y, float $w, float $h): bool
+{
+    $type = pdf_detect_image_type($path);
+    if ($type === '') {
+        return false;
+    }
+
+    try {
+        $pdf->Image($path, $x, $y, $w, $h, $type);
+        return true;
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+function pdf_logo_path(): string
+{
+    $candidates = [
+        __DIR__ . '/../../public/assets/images/logo.png',
+        __DIR__ . '/../../public/assets/images/logo.jpg',
+        __DIR__ . '/../../public/assets/images/logo.jpeg',
+    ];
+
+    foreach ($candidates as $path) {
+        if (!is_file($path)) {
+            continue;
+        }
+        if (pdf_detect_image_type($path) !== '') {
+            return $path;
+        }
+    }
+
+    return '';
+}
+
+function pdf_store_info(): array
+{
+    return store_info_get();
+}
+
 class BasePDF extends FPDF
 {
+    public function contentLeft(): float
+    {
+        return (float) $this->lMargin;
+    }
+
+    public function contentRightMargin(): float
+    {
+        return (float) $this->rMargin;
+    }
+
     // Draw ellipse based on Bezier curves.
     public function Ellipse(float $x, float $y, float $rx, float $ry, string $style = 'D'): void
     {
@@ -112,18 +238,34 @@ class BasePDF extends FPDF
 class BosReportPDF extends BasePDF
 {
     public string $logoPath = '';
+    public string $storeName = 'KASPINDO';
     public array $filters = [];
 
     function Header(): void
     {
-        $this->SetFont('Arial', 'B', 12);
+        $this->SetTextColor(15, 23, 42);
         if ($this->logoPath !== '' && is_file($this->logoPath)) {
-            $this->Image($this->logoPath, 10, 8, 14, 14);
+            pdf_draw_image_safe($this, $this->logoPath, 10, 8, 12, 12);
         }
-        $this->Cell(0, 6, pdf_text('KASPINDO'), 0, 1, 'C');
-        $this->SetFont('Arial', 'B', 13);
-        $this->Cell(0, 6, pdf_text('LAPORAN TRANSAKSI'), 0, 1, 'C');
-        $this->Ln(4);
+        $this->SetXY(25, 8);
+        $this->SetFont('Arial', 'B', 11);
+        $this->Cell(110, 5, pdf_text($this->storeName), 0, 2, 'L');
+        $this->SetFont('Arial', '', 8);
+        $this->SetTextColor(100, 116, 139);
+        $this->Cell(110, 4, pdf_text('Dokumen operasional POS'), 0, 2, 'L');
+
+        $this->SetXY(162, 8);
+        $this->SetFont('Arial', 'B', 14);
+        $this->SetTextColor(15, 23, 42);
+        $this->Cell(125, 6, pdf_text('LAPORAN TRANSAKSI'), 0, 2, 'R');
+        $this->SetFont('Arial', '', 8);
+        $this->SetTextColor(100, 116, 139);
+        $this->Cell(125, 4, pdf_text('Ringkasan penjualan dan profit'), 0, 2, 'R');
+
+        $this->SetDrawColor(226, 232, 240);
+        $this->Line(10, 24, 287, 24);
+        $this->SetY(28);
+        $this->SetTextColor(15, 23, 42);
     }
 
     function Footer(): void
@@ -132,7 +274,7 @@ class BosReportPDF extends BasePDF
         $this->SetFont('Arial', '', 8);
         $this->SetTextColor(100, 116, 139);
         $this->Cell(0, 4, pdf_text('Laporan ini dibuat otomatis oleh sistem.'), 0, 1, 'C');
-        $this->Cell(0, 4, pdf_text('KASPINDO | Halaman ' . $this->PageNo() . '/{nb}'), 0, 0, 'C');
+        $this->Cell(0, 4, pdf_text($this->storeName . ' | Halaman ' . $this->PageNo() . '/{nb}'), 0, 0, 'C');
         $this->SetTextColor(15, 23, 42);
     }
 }
@@ -140,17 +282,33 @@ class BosReportPDF extends BasePDF
 class CashReportPDF extends BasePDF
 {
     public string $logoPath = '';
+    public string $storeName = 'KASPINDO';
 
     function Header(): void
     {
-        $this->SetFont('Arial', 'B', 12);
+        $this->SetTextColor(15, 23, 42);
         if ($this->logoPath !== '' && is_file($this->logoPath)) {
-            $this->Image($this->logoPath, 10, 8, 14, 14);
+            pdf_draw_image_safe($this, $this->logoPath, 10, 8, 12, 12);
         }
-        $this->Cell(0, 6, pdf_text('KASPINDO'), 0, 1, 'C');
-        $this->SetFont('Arial', 'B', 13);
-        $this->Cell(0, 6, pdf_text('LAPORAN KAS HARIAN'), 0, 1, 'C');
-        $this->Ln(4);
+        $this->SetXY(25, 8);
+        $this->SetFont('Arial', 'B', 11);
+        $this->Cell(110, 5, pdf_text($this->storeName), 0, 2, 'L');
+        $this->SetFont('Arial', '', 8);
+        $this->SetTextColor(100, 116, 139);
+        $this->Cell(110, 4, pdf_text('Dokumen kontrol kas dan shift'), 0, 2, 'L');
+
+        $this->SetXY(162, 8);
+        $this->SetFont('Arial', 'B', 14);
+        $this->SetTextColor(15, 23, 42);
+        $this->Cell(125, 6, pdf_text('LAPORAN KAS HARIAN'), 0, 2, 'R');
+        $this->SetFont('Arial', '', 8);
+        $this->SetTextColor(100, 116, 139);
+        $this->Cell(125, 4, pdf_text('Rekap arus kas, QRIS, dan selisih drawer'), 0, 2, 'R');
+
+        $this->SetDrawColor(226, 232, 240);
+        $this->Line(10, 24, 287, 24);
+        $this->SetY(28);
+        $this->SetTextColor(15, 23, 42);
     }
 
     function Footer(): void
@@ -159,7 +317,7 @@ class CashReportPDF extends BasePDF
         $this->SetFont('Arial', '', 8);
         $this->SetTextColor(100, 116, 139);
         $this->Cell(0, 4, pdf_text('Laporan ini dibuat otomatis oleh sistem.'), 0, 1, 'C');
-        $this->Cell(0, 4, pdf_text('KASPINDO | Halaman ' . $this->PageNo() . '/{nb}'), 0, 0, 'C');
+        $this->Cell(0, 4, pdf_text($this->storeName . ' | Halaman ' . $this->PageNo() . '/{nb}'), 0, 0, 'C');
         $this->SetTextColor(15, 23, 42);
     }
 }
@@ -171,14 +329,20 @@ function build_cash_report_pdf(
     array $shiftTotals,
     array $filters
 ): string {
+    $storeInfo = pdf_store_info();
+    $storeName = (string) ($storeInfo['store_name'] ?? 'KASPINDO');
+    $storeAddress = store_info_compose_address($storeInfo);
+    $storePhone = (string) ($storeInfo['store_phone'] ?? '');
+    $storeWhatsapp = (string) ($storeInfo['store_whatsapp'] ?? '');
+    $storeEmail = (string) ($storeInfo['store_email'] ?? '');
+
     $pdf = new CashReportPDF('L', 'mm', 'A4');
     $pdf->AliasNbPages();
     $pdf->SetMargins(10, 12, 10);
     $pdf->SetAutoPageBreak(true, 14);
 
-    $logoPng = __DIR__ . '/../../public/assets/images/logo.png';
-    $logoJpg = __DIR__ . '/../../public/assets/images/logo.jpg';
-    $pdf->logoPath = is_file($logoPng) ? $logoPng : (is_file($logoJpg) ? $logoJpg : '');
+    $pdf->logoPath = pdf_logo_path();
+    $pdf->storeName = $storeName !== '' ? $storeName : 'KASPINDO';
 
     $pdf->AddPage();
 
@@ -191,20 +355,61 @@ function build_cash_report_pdf(
         $printedLabel .= ' (' . $printedRole . ')';
     }
 
-    $pdf->SetFont('Arial', '', 9);
+    $netCashTotal = (float) ($dailyTotals['cash_sales'] ?? 0)
+        - (float) ($dailyTotals['refund_cash'] ?? 0)
+        + (float) ($dailyTotals['cash_in'] ?? 0)
+        - (float) ($dailyTotals['cash_out'] ?? 0);
+    $netQrisTotal = (float) ($dailyTotals['qris_sales'] ?? 0) - (float) ($dailyTotals['refund_qris'] ?? 0);
+    $totalSales = (float) ($dailyTotals['cash_sales'] ?? 0) + (float) ($dailyTotals['qris_sales'] ?? 0);
+    $totalRefund = (float) ($dailyTotals['refund_cash'] ?? 0) + (float) ($dailyTotals['refund_qris'] ?? 0);
+    $cashMovement = (float) ($dailyTotals['cash_in'] ?? 0) - (float) ($dailyTotals['cash_out'] ?? 0);
+    $contactLine = implode(' | ', array_values(array_filter([$storePhone, $storeWhatsapp, $storeEmail], static fn ($value): bool => trim((string) $value) !== '')));
+
+    $pdf->SetDrawColor(226, 232, 240);
+    $pdf->SetFillColor(248, 250, 252);
+    $pdf->SetFont('Arial', 'B', 8);
     $pdf->SetTextColor(100, 116, 139);
-    $pdf->Cell(36, 5, pdf_text('Periode Laporan'), 0, 0, 'L');
+    $pdf->Cell(32, 6, pdf_text('Periode'), 1, 0, 'L', true);
+    $pdf->SetFont('Arial', '', 8);
     $pdf->SetTextColor(15, 23, 42);
-    $pdf->Cell(0, 5, pdf_text(': ' . $period), 0, 1, 'L');
+    $pdf->Cell(94, 6, pdf_text($period), 1, 0, 'L');
+    $pdf->SetFont('Arial', 'B', 8);
     $pdf->SetTextColor(100, 116, 139);
-    $pdf->Cell(36, 5, pdf_text('Tanggal Cetak'), 0, 0, 'L');
+    $pdf->Cell(32, 6, pdf_text('Dicetak Pada'), 1, 0, 'L', true);
+    $pdf->SetFont('Arial', '', 8);
     $pdf->SetTextColor(15, 23, 42);
-    $pdf->Cell(0, 5, pdf_text(': ' . $printedAt), 0, 1, 'L');
+    $pdf->Cell(119, 6, pdf_text($printedAt), 1, 1, 'L');
+
+    $pdf->SetFont('Arial', 'B', 8);
     $pdf->SetTextColor(100, 116, 139);
-    $pdf->Cell(36, 5, pdf_text('Dicetak Oleh'), 0, 0, 'L');
+    $pdf->Cell(32, 6, pdf_text('Store'), 1, 0, 'L', true);
+    $pdf->SetFont('Arial', '', 8);
     $pdf->SetTextColor(15, 23, 42);
-    $pdf->Cell(0, 5, pdf_text(': ' . $printedLabel), 0, 1, 'L');
-    $pdf->Ln(4);
+    $pdf->Cell(94, 6, pdf_text(pdf_truncate($storeName !== '' ? $storeName : 'KASPINDO', 48)), 1, 0, 'L');
+    $pdf->SetFont('Arial', 'B', 8);
+    $pdf->SetTextColor(100, 116, 139);
+    $pdf->Cell(32, 6, pdf_text('Dicetak Oleh'), 1, 0, 'L', true);
+    $pdf->SetFont('Arial', '', 8);
+    $pdf->SetTextColor(15, 23, 42);
+    $pdf->Cell(119, 6, pdf_text(pdf_truncate($printedLabel, 58)), 1, 1, 'L');
+
+    if ($storeAddress !== '' || $contactLine !== '') {
+        $pdf->SetFont('Arial', 'B', 8);
+        $pdf->SetTextColor(100, 116, 139);
+        $pdf->Cell(32, 6, pdf_text('Alamat/Kontak'), 1, 0, 'L', true);
+        $pdf->SetFont('Arial', '', 8);
+        $pdf->SetTextColor(15, 23, 42);
+        $pdf->Cell(245, 6, pdf_text(pdf_truncate(trim($storeAddress . ($contactLine !== '' ? ' | ' . $contactLine : '')), 140)), 1, 1, 'L');
+    }
+    $pdf->Ln(5);
+
+    pdf_draw_kpi_cards($pdf, [
+        ['label' => 'Net Cash', 'value' => pdf_money($netCashTotal), 'note' => 'Sales cash - refund + kas masuk/keluar'],
+        ['label' => 'Net QRIS', 'value' => pdf_money($netQrisTotal), 'note' => 'Sales QRIS - refund'],
+        ['label' => 'Total Sales', 'value' => pdf_money($totalSales), 'note' => 'Cash + QRIS sebelum refund'],
+        ['label' => 'Total Refund', 'value' => pdf_money($totalRefund), 'note' => 'Cash + QRIS'],
+        ['label' => 'Arus Kas Manual', 'value' => pdf_money($cashMovement), 'note' => 'Cash in - cash out'],
+    ], $pdf->GetY());
 
     $pdf->SetFont('Arial', 'B', 10);
     $pdf->Cell(0, 6, pdf_text('Rekap Kas Harian'), 0, 1, 'L');
@@ -222,7 +427,7 @@ function build_cash_report_pdf(
     $pdf->Ln();
 
     $pdf->SetFont('Arial', '', 8.5);
-    foreach ($dailyRecap as $row) {
+    foreach ($dailyRecap as $index => $row) {
         $cashIn = (float) ($row['cash_in'] ?? 0);
         $cashOut = (float) ($row['cash_out'] ?? 0);
         $cashSales = (float) ($row['cash_sales'] ?? 0);
@@ -233,7 +438,7 @@ function build_cash_report_pdf(
         $netQris = $qrisSales - $refundQris;
 
         $rowData = [
-            (string) ($row['date'] ?? '-'),
+            pdf_format_date((string) ($row['date'] ?? '')),
             format_rupiah($cashIn),
             format_rupiah($cashOut),
             format_rupiah($cashSales),
@@ -244,17 +449,12 @@ function build_cash_report_pdf(
             format_rupiah($netQris),
         ];
 
+        $pdf->SetFillColor($index % 2 === 0 ? 255 : 248, $index % 2 === 0 ? 255 : 250, $index % 2 === 0 ? 255 : 252);
         foreach ($rowData as $i => $value) {
-            $pdf->Cell($dailyWidths[$i], 7, pdf_text($value), 1, 0, $dailyAligns[$i]);
+            $pdf->Cell($dailyWidths[$i], 7, pdf_text($value), 1, 0, $dailyAligns[$i], $index % 2 !== 0);
         }
         $pdf->Ln();
     }
-
-    $netCashTotal = (float) ($dailyTotals['cash_sales'] ?? 0)
-        - (float) ($dailyTotals['refund_cash'] ?? 0)
-        + (float) ($dailyTotals['cash_in'] ?? 0)
-        - (float) ($dailyTotals['cash_out'] ?? 0);
-    $netQrisTotal = (float) ($dailyTotals['qris_sales'] ?? 0) - (float) ($dailyTotals['refund_qris'] ?? 0);
 
     $totalRow = [
         'Total',
@@ -268,8 +468,9 @@ function build_cash_report_pdf(
         format_rupiah($netQrisTotal),
     ];
     $pdf->SetFont('Arial', 'B', 8.5);
+    $pdf->SetFillColor(236, 253, 245);
     foreach ($totalRow as $i => $value) {
-        $pdf->Cell($dailyWidths[$i], 7, pdf_text($value), 1, 0, $dailyAligns[$i]);
+        $pdf->Cell($dailyWidths[$i], 7, pdf_text($value), 1, 0, $dailyAligns[$i], true);
     }
     $pdf->Ln(10);
 
@@ -277,11 +478,11 @@ function build_cash_report_pdf(
     $pdf->Cell(0, 6, pdf_text('Detail Kas per Shift'), 0, 1, 'L');
 
     $shiftHeaders = [
-        'Shift', 'Kasir', 'Mulai', 'Selesai', 'Kas Awal', 'Cash In', 'Cash Out',
-        'Sales Cash', 'Refund Cash', 'Expected Cash', 'Kas Akhir', 'Selisih', 'Sales QRIS'
+        'Shift', 'Kasir', 'Status', 'Mulai', 'Selesai', 'Kas Awal', 'Cash In', 'Cash Out',
+        'Sales Cash', 'Refund', 'Expected', 'Kas Akhir', 'Selisih', 'QRIS'
     ];
-    $shiftWidths = [20, 22, 24, 24, 20, 20, 20, 20, 20, 22, 20, 18, 22];
-    $shiftAligns = ['L', 'L', 'L', 'L', 'R', 'R', 'R', 'R', 'R', 'R', 'R', 'R', 'R'];
+    $shiftWidths = [20, 22, 14, 22, 22, 19, 18, 18, 20, 19, 21, 19, 17, 20];
+    $shiftAligns = ['L', 'L', 'C', 'L', 'L', 'R', 'R', 'R', 'R', 'R', 'R', 'R', 'R', 'R'];
 
     $pdf->SetFillColor(248, 250, 252);
     $pdf->SetDrawColor(226, 232, 240);
@@ -292,13 +493,14 @@ function build_cash_report_pdf(
     $pdf->Ln();
 
     $pdf->SetFont('Arial', '', 8);
-    foreach ($shiftRows as $row) {
+    foreach ($shiftRows as $index => $row) {
         $diff = $row['diff_cash'];
         $rowData = [
-            (string) ($row['shift_id'] ?? '-'),
-            (string) ($row['user_name'] ?? '-'),
-            (string) ($row['opened_at'] ?? '-'),
-            (string) ($row['closed_at'] ?? '-'),
+            pdf_truncate((string) ($row['shift_id'] ?? '-'), 12),
+            pdf_truncate((string) ($row['user_name'] ?? '-'), 14),
+            strtoupper(pdf_truncate((string) ($row['status'] ?? '-'), 6)),
+            pdf_format_datetime((string) ($row['opened_at'] ?? '')),
+            empty($row['closed_at']) ? '-' : pdf_format_datetime((string) $row['closed_at']),
             format_rupiah((float) ($row['opening_cash'] ?? 0)),
             format_rupiah((float) ($row['cash_in'] ?? 0)),
             format_rupiah((float) ($row['cash_out'] ?? 0)),
@@ -309,8 +511,9 @@ function build_cash_report_pdf(
             $diff === null ? '-' : format_rupiah((float) $diff),
             format_rupiah((float) ($row['sales_qris'] ?? 0)),
         ];
+        $pdf->SetFillColor($index % 2 === 0 ? 255 : 248, $index % 2 === 0 ? 255 : 250, $index % 2 === 0 ? 255 : 252);
         foreach ($rowData as $i => $value) {
-            $pdf->Cell($shiftWidths[$i], 7, pdf_text($value), 1, 0, $shiftAligns[$i]);
+            $pdf->Cell($shiftWidths[$i], 7, pdf_text($value), 1, 0, $shiftAligns[$i], $index % 2 !== 0);
         }
         $pdf->Ln();
     }
@@ -319,7 +522,7 @@ function build_cash_report_pdf(
         $pdf->Cell(array_sum($shiftWidths), 8, pdf_text('Tidak ada data shift pada periode ini.'), 1, 1, 'C');
     } else {
         $totalRow = [
-            'Total', '', '', '',
+            'Total', '', '', '', '',
             format_rupiah((float) ($shiftTotals['opening_cash'] ?? 0)),
             format_rupiah((float) ($shiftTotals['cash_in'] ?? 0)),
             format_rupiah((float) ($shiftTotals['cash_out'] ?? 0)),
@@ -331,8 +534,9 @@ function build_cash_report_pdf(
             format_rupiah((float) ($shiftTotals['sales_qris'] ?? 0)),
         ];
         $pdf->SetFont('Arial', 'B', 8);
+        $pdf->SetFillColor(236, 253, 245);
         foreach ($totalRow as $i => $value) {
-            $pdf->Cell($shiftWidths[$i], 7, pdf_text($value), 1, 0, $shiftAligns[$i]);
+            $pdf->Cell($shiftWidths[$i], 7, pdf_text($value), 1, 0, $shiftAligns[$i], true);
         }
         $pdf->Ln();
     }
@@ -342,14 +546,20 @@ function build_cash_report_pdf(
 
 function build_bos_report_pdf(array $rows, array $summary, array $filters): string
 {
+    $storeInfo = pdf_store_info();
+    $storeName = (string) ($storeInfo['store_name'] ?? 'KASPINDO');
+    $storeAddress = store_info_compose_address($storeInfo);
+    $storePhone = (string) ($storeInfo['store_phone'] ?? '');
+    $storeWhatsapp = (string) ($storeInfo['store_whatsapp'] ?? '');
+    $storeEmail = (string) ($storeInfo['store_email'] ?? '');
+
     $pdf = new BosReportPDF('L', 'mm', 'A4');
     $pdf->AliasNbPages();
     $pdf->SetMargins(10, 12, 10);
     $pdf->SetAutoPageBreak(true, 14);
 
-    $logoPng = __DIR__ . '/../../public/assets/images/logo.png';
-    $logoJpg = __DIR__ . '/../../public/assets/images/logo.jpg';
-    $pdf->logoPath = is_file($logoPng) ? $logoPng : (is_file($logoJpg) ? $logoJpg : '');
+    $pdf->logoPath = pdf_logo_path();
+    $pdf->storeName = $storeName !== '' ? $storeName : 'KASPINDO';
     $pdf->filters = $filters;
 
     $pdf->AddPage();
@@ -363,7 +573,6 @@ function build_bos_report_pdf(array $rows, array $summary, array $filters): stri
     if ($printedRole !== '') {
         $printedLabel .= ' (' . $printedRole . ')';
     }
-    $storeAddress = 'Jl. Sma 1 Kel No.Rt. 16, Aur, Sarolangun, Kab. Sarolangun, Jambi 37481';
 
     $pdf->SetFont('Arial', '', 9);
     $pdf->SetTextColor(100, 116, 139);
@@ -385,7 +594,25 @@ function build_bos_report_pdf(array $rows, array $summary, array $filters): stri
     $pdf->SetTextColor(100, 116, 139);
     $pdf->Cell(36, 5, pdf_text('Lokasi Store'), 0, 0, 'L');
     $pdf->SetTextColor(15, 23, 42);
-    $pdf->MultiCell(0, 5, pdf_text(': ' . $storeAddress), 0, 'L');
+    $pdf->MultiCell(0, 5, pdf_text(': ' . ($storeAddress !== '' ? $storeAddress : '-')), 0, 'L');
+    if ($storePhone !== '') {
+        $pdf->SetTextColor(100, 116, 139);
+        $pdf->Cell(36, 5, pdf_text('No. Telepon'), 0, 0, 'L');
+        $pdf->SetTextColor(15, 23, 42);
+        $pdf->Cell(0, 5, pdf_text(': ' . $storePhone), 0, 1, 'L');
+    }
+    if ($storeWhatsapp !== '') {
+        $pdf->SetTextColor(100, 116, 139);
+        $pdf->Cell(36, 5, pdf_text('WhatsApp'), 0, 0, 'L');
+        $pdf->SetTextColor(15, 23, 42);
+        $pdf->Cell(0, 5, pdf_text(': ' . $storeWhatsapp), 0, 1, 'L');
+    }
+    if ($storeEmail !== '') {
+        $pdf->SetTextColor(100, 116, 139);
+        $pdf->Cell(36, 5, pdf_text('Email'), 0, 0, 'L');
+        $pdf->SetTextColor(15, 23, 42);
+        $pdf->Cell(0, 5, pdf_text(': ' . $storeEmail), 0, 1, 'L');
+    }
     $pdf->Ln(4);
 
     $totalTransactions = count(array_unique(array_map(static fn ($row) => (string) ($row['id'] ?? ''), $rows)));
@@ -397,7 +624,7 @@ function build_bos_report_pdf(array $rows, array $summary, array $filters): stri
 
     $summaryValue = static function ($value, bool $isCurrency = false): string {
         if ((float) $value <= 0) {
-            return 'Tidak ada transaksi';
+            return $isCurrency ? format_rupiah(0) : '0';
         }
         return $isCurrency ? format_rupiah((float) $value) : (string) $value;
     };
@@ -488,7 +715,7 @@ function build_bos_report_pdf(array $rows, array $summary, array $filters): stri
     $pdf->Ln();
 
     $pdf->SetFont('Arial', '', 9);
-    foreach ($rows as $row) {
+    foreach ($rows as $index => $row) {
         $qty = (int) ($row['qty'] ?? 0);
         $price = (float) ($row['price'] ?? 0);
         $cost = (float) ($row['cost_price'] ?? 0);
@@ -498,8 +725,8 @@ function build_bos_report_pdf(array $rows, array $summary, array $filters): stri
 
         $data = [
             '#' . (string) $row['id'],
-            date('d/m/Y H:i', strtotime((string) $row['created_at'])),
-            (string) ($row['cashier'] ?? '-'),
+            pdf_format_datetime((string) $row['created_at']),
+            pdf_truncate((string) ($row['cashier'] ?? '-'), 18),
             $itemName,
             (string) $qty,
             format_rupiah($price),
@@ -509,8 +736,9 @@ function build_bos_report_pdf(array $rows, array $summary, array $filters): stri
             strtoupper((string) ($row['method'] ?? '-')),
         ];
 
+        $pdf->SetFillColor($index % 2 === 0 ? 255 : 248, $index % 2 === 0 ? 255 : 250, $index % 2 === 0 ? 255 : 252);
         foreach ($data as $i => $value) {
-            $pdf->Cell($widths[$i], 7, pdf_text($value), 1, 0, $aligns[$i]);
+            $pdf->Cell($widths[$i], 7, pdf_text($value), 1, 0, $aligns[$i], $index % 2 !== 0);
         }
         $pdf->Ln();
     }
@@ -524,24 +752,34 @@ function build_bos_report_pdf(array $rows, array $summary, array $filters): stri
 
 function build_receipt_pdf(array $receipt): string
 {
+    $storeInfo = pdf_store_info();
+    $storeName = (string) ($storeInfo['store_name'] ?? 'KASPINDO');
+    $storeAddress = store_info_compose_address($storeInfo);
+    $storePhone = trim((string) ($storeInfo['store_phone'] ?? ''));
+    $storeWhatsapp = trim((string) ($storeInfo['store_whatsapp'] ?? ''));
+    $storeInstagram = trim((string) ($storeInfo['store_instagram'] ?? ''));
+    $businessHours = trim((string) ($storeInfo['business_hours'] ?? ''));
+    $receiptFooter = trim((string) ($storeInfo['receipt_footer'] ?? 'Terima kasih!'));
+
     $pdf = new BasePDF('P', 'mm', [80, 200]);
     $pdf->SetMargins(6, 6, 6);
     $pdf->SetAutoPageBreak(true, 6);
     $pdf->AddPage();
 
-    $logoPng = __DIR__ . '/../../public/assets/images/logo.png';
-    $logoJpg = __DIR__ . '/../../public/assets/images/logo.jpg';
-    $logoPath = is_file($logoPng) ? $logoPng : (is_file($logoJpg) ? $logoJpg : '');
+    $logoPath = pdf_logo_path();
 
     if ($logoPath !== '') {
-        $pdf->Image($logoPath, 33, 6, 14, 14);
-        $pdf->Ln(18);
+        if (pdf_draw_image_safe($pdf, $logoPath, 33, 6, 14, 14)) {
+            $pdf->Ln(18);
+        } else {
+            $pdf->Ln(6);
+        }
     } else {
         $pdf->Ln(6);
     }
 
     $pdf->SetFont('Courier', 'B', 9);
-    $pdf->Cell(0, 4, pdf_text('KASPINDO'), 0, 1, 'C');
+    $pdf->Cell(0, 4, pdf_text($storeName !== '' ? $storeName : 'KASPINDO'), 0, 1, 'C');
     $pdf->SetFont('Courier', '', 8);
     $pdf->Cell(0, 4, pdf_text('Struk Pembayaran'), 0, 1, 'C');
     $pdf->Ln(2);
@@ -594,11 +832,23 @@ function build_receipt_pdf(array $receipt): string
 
     $pdf->Cell(0, 4, pdf_text($divider), 0, 1, 'C');
     $pdf->SetFont('Courier', '', 8);
-    $pdf->Cell(0, 4, pdf_text('@kaspindo'), 0, 1, 'C');
+    if ($storeInstagram !== '') {
+        $pdf->Cell(0, 4, pdf_text($storeInstagram), 0, 1, 'C');
+    }
     $pdf->SetFont('Courier', '', 7);
-    $storeAddress = 'Jl. Sma 1 Kel No.Rt. 16, Aur, Sarolangun, Kab. Sarolangun, Jambi 37481';
-    $pdf->MultiCell(0, 3.5, pdf_text('Lokasi: ' . $storeAddress), 0, 'C');
-    $pdf->Cell(0, 4, pdf_text('Terima kasih!'), 0, 1, 'C');
+    if ($storeAddress !== '') {
+        $pdf->MultiCell(0, 3.5, pdf_text('Lokasi: ' . $storeAddress), 0, 'C');
+    }
+    if ($storePhone !== '') {
+        $pdf->Cell(0, 3.5, pdf_text('Telp: ' . $storePhone), 0, 1, 'C');
+    }
+    if ($storeWhatsapp !== '') {
+        $pdf->Cell(0, 3.5, pdf_text('WA: ' . $storeWhatsapp), 0, 1, 'C');
+    }
+    if ($businessHours !== '') {
+        $pdf->Cell(0, 3.5, pdf_text('Jam: ' . $businessHours), 0, 1, 'C');
+    }
+    $pdf->Cell(0, 4, pdf_text($receiptFooter !== '' ? $receiptFooter : 'Terima kasih!'), 0, 1, 'C');
 
     return $pdf->Output('S');
 }

@@ -64,7 +64,7 @@ require_once __DIR__ . '/../layouts/header.php';
         <span class="input-group-text bg-white border-0">
             <span class="material-icons-outlined">search</span>
         </span>
-        <input type="text" id="productSearch" class="form-control border-0" placeholder="Cari nama / scan SKU lalu Enter...">
+        <input type="text" id="productSearch" class="form-control border-0" placeholder="Cari nama / scan SKU lalu Enter..." data-testid="product-search">
     </div>
 </div>
 
@@ -92,18 +92,17 @@ require_once __DIR__ . '/../layouts/header.php';
     <?php echo csrf_field(); ?>
     <input type="hidden" name="checkout_token" value="<?php echo e($checkoutToken); ?>">
     <input type="hidden" name="item_discounts" id="item_discounts" value="">
-    <div class="kp-grid kp-grid-3" id="productGrid">
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4" id="productGrid">
     <?php foreach ($products as $product): ?>
         <?php
             $invItem = $inventoryItems[(int) $product['id']] ?? null;
             $stockTracked = is_array($invItem) && array_key_exists('stock', $invItem) && $invItem['stock'] !== null;
             $stockValue = $stockTracked ? (int) ($invItem['stock'] ?? 0) : null;
-            $minValue = $stockTracked ? (int) ($invItem['min'] ?? 0) : 0;
-            $stockLabel = $stockTracked ? ('Stok: ' . $stockValue) : '';
             $skuValue = strtolower(trim((string) ($product['sku'] ?? '')));
         ?>
         <div
-            class="kp-card p-3 kp-product-card"
+            class="kp-card kp-product-card p-4 flex flex-col group cursor-pointer transition-all duration-300 hover:shadow-lg"
+            data-testid="product-card"
             data-name="<?php echo e(strtolower($product['name'])); ?>"
             data-category="<?php echo e((string) ($product['category_id'] ?? 'all')); ?>"
             data-sku="<?php echo e($skuValue); ?>"
@@ -111,42 +110,35 @@ require_once __DIR__ . '/../layouts/header.php';
             data-stock="<?php echo $stockTracked ? (int) $stockValue : ''; ?>"
             data-stock-tracked="<?php echo $stockTracked ? '1' : '0'; ?>"
         >
-            <div class="d-flex align-items-center gap-3">
-                <div class="kp-avatar">
-                    <span class="material-icons-outlined">local_cafe</span>
+            <div class="mb-3">
+                <div class="w-full aspect-square rounded-xl bg-slate-50 flex items-center justify-center text-slate-300 group-hover:bg-emerald-50 group-hover:text-emerald-500 transition-colors">
+                    <span class="material-icons-outlined text-4xl">local_cafe</span>
                 </div>
-                    <div class="flex-grow-1">
-                        <div class="fw-semibold"><?php echo e($product['name']); ?></div>
-                        <div class="kp-muted small"><?php echo e(format_rupiah((float) $product['price'])); ?></div>
-                        <?php if ($skuValue !== ''): ?>
-                            <div class="kp-muted small">SKU: <?php echo e($product['sku']); ?></div>
-                        <?php endif; ?>
-                        <?php if (!empty($product['category_name'])): ?>
-                            <div class="kp-muted small"><?php echo e($product['category_name']); ?></div>
-                        <?php endif; ?>
-                        <?php if ($stockTracked): ?>
-                            <div class="kp-muted small"><?php echo e($stockLabel); ?></div>
-                        <?php endif; ?>
-                    </div>
-                </div>
-                <div class="d-flex align-items-center justify-content-between mt-3">
-                    <button type="button" class="kp-icon-btn qty-btn" data-action="minus" data-id="<?php echo (int) $product['id']; ?>">
-                        <span class="material-icons-outlined">remove</span>
-                    </button>
-                    <div class="fw-semibold" id="qty-view-<?php echo (int) $product['id']; ?>">0</div>
-                    <button type="button" class="kp-icon-btn qty-btn" data-action="plus" data-id="<?php echo (int) $product['id']; ?>" <?php echo ($stockTracked && $stockValue <= 0) ? 'disabled' : ''; ?>>
-                        <span class="material-icons-outlined">add</span>
-                    </button>
-                </div>
-                <input
-                    type="hidden"
-                    name="items[<?php echo (int) $product['id']; ?>]"
-                    id="qty-input-<?php echo (int) $product['id']; ?>"
-                    value="0"
-                    data-price="<?php echo e((string) $product['price']); ?>"
-                >
             </div>
-        <?php endforeach; ?>
+
+            <div class="flex-1">
+                <h3 class="kp-product-name text-sm font-bold text-slate-900 truncate mb-1"><?php echo e($product['name']); ?></h3>
+                <p class="text-emerald-600 font-bold text-sm"><?php echo e(format_rupiah((float) $product['price'])); ?></p>
+                <?php if ($stockTracked): ?>
+                    <p class="text-[10px] font-bold uppercase tracking-wider <?php echo $stockValue <= 0 ? 'text-red-500' : 'text-slate-400'; ?> mt-1">
+                        Stock: <?php echo e($stockValue); ?>
+                    </p>
+                <?php endif; ?>
+            </div>
+
+            <div class="flex items-center justify-between mt-4 bg-slate-50 rounded-lg p-1">
+                <button type="button" class="w-8 h-8 rounded-md bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-all qty-btn" data-testid="qty-minus" data-action="minus" data-id="<?php echo (int) $product['id']; ?>">
+                    <span class="material-icons-outlined text-sm">remove</span>
+                </button>
+                <span class="text-sm font-bold text-slate-900" id="qty-view-<?php echo (int) $product['id']; ?>">0</span>
+                <button type="button" class="w-8 h-8 rounded-md bg-white border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-emerald-50 hover:text-emerald-500 hover:border-emerald-200 transition-all qty-btn" data-testid="qty-plus" data-action="plus" data-id="<?php echo (int) $product['id']; ?>" <?php echo ($stockTracked && $stockValue <= 0) ? 'disabled' : ''; ?>>
+                    <span class="material-icons-outlined text-sm">add</span>
+                </button>
+            </div>
+
+            <input type="hidden" name="items[<?php echo (int) $product['id']; ?>]" id="qty-input-<?php echo (int) $product['id']; ?>" value="0" data-price="<?php echo e((string) $product['price']); ?>">
+        </div>
+    <?php endforeach; ?>
     </div>
 
     <div class="offcanvas offcanvas-bottom kp-offcanvas" tabindex="-1" id="cartPanel">
@@ -159,16 +151,15 @@ require_once __DIR__ . '/../layouts/header.php';
                 <div id="cartList" class="kp-cart-list"></div>
 
                 <div class="kp-summary-panel mt-3">
-                    <div class="kp-card-flat p-3 kp-summary-total">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <div class="kp-muted small">Total</div>
-                                <div class="fs-4 fw-semibold" id="cartTotal">Rp 0</div>
-                            </div>
-                            <div class="text-end">
-                                <div class="kp-muted small">Kembalian</div>
-                                <div class="fw-semibold" id="cashChange">Rp 0</div>
-                            </div>
+                    <div class="p-6 rounded-2xl bg-slate-900 text-white shadow-xl shadow-slate-200">
+                        <div class="flex justify-between items-center mb-4">
+                            <span class="text-slate-400 text-sm font-medium">Total Tagihan</span>
+                            <span class="px-2 py-1 rounded bg-slate-800 text-[10px] font-bold uppercase tracking-widest text-slate-400">IDR</span>
+                        </div>
+                        <div class="text-3xl font-bold mb-4" id="cartTotal">Rp 0</div>
+                        <div class="flex justify-between items-center pt-4 border-t border-slate-800">
+                            <span class="text-slate-400 text-xs">Kembalian</span>
+                            <span class="text-emerald-400 font-bold" id="cashChange">Rp 0</span>
                         </div>
                     </div>
 
@@ -285,7 +276,7 @@ require_once __DIR__ . '/../layouts/header.php';
 
                     <div class="kp-card-flat p-3" id="cashSection">
                         <label class="form-label">Uang Tunai</label>
-                        <input type="number" step="0.01" min="0" name="cash_received" id="cash_received" class="form-control" value="<?php echo e((string) $cashReceived); ?>">
+                        <input type="number" step="0.01" min="0" name="cash_received" id="cash_received" class="form-control" value="<?php echo e((string) $cashReceived); ?>" data-testid="cash-received">
                     </div>
 
                     <div class="kp-card-flat p-3">
@@ -317,7 +308,7 @@ require_once __DIR__ . '/../layouts/header.php';
             </div>
 
             <div class="kp-offcanvas-footer">
-                <button class="btn kp-btn-primary w-100" type="button" id="payButton">
+                <button class="btn kp-btn-primary w-100" type="button" id="payButton" data-testid="pay-button">
                     <span class="material-icons-outlined">paid</span>
                     Bayar Sekarang
                 </button>
@@ -346,7 +337,7 @@ require_once __DIR__ . '/../layouts/header.php';
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn kp-btn-ghost" data-bs-dismiss="modal">Batal</button>
-                <button type="button" class="btn kp-btn-primary" id="confirmPayBtn">
+                <button type="button" class="btn kp-btn-primary" id="confirmPayBtn" data-testid="confirm-pay-button">
                     <span class="material-icons-outlined">check_circle</span>
                     Konfirmasi Bayar
                 </button>
@@ -654,8 +645,8 @@ require_once __DIR__ . '/../layouts/header.php';
         if (!card) {
             return 'Produk';
         }
-        const nameEl = card.querySelector('.fw-semibold');
-        return nameEl ? nameEl.textContent : 'Produk';
+        const nameEl = card.querySelector('.kp-product-name');
+        return nameEl ? nameEl.textContent.trim() : 'Produk';
     };
 
     const findVoucher = (code) => {
@@ -800,7 +791,7 @@ require_once __DIR__ . '/../layouts/header.php';
             grandTotal,
         };
     };
-    
+
 
     const resetCartAfterSuccess = () => {
         Object.keys(cartState).forEach((key) => {
@@ -919,14 +910,14 @@ require_once __DIR__ . '/../layouts/header.php';
             const row = document.createElement('div');
             row.className = 'kp-cart-item';
             row.innerHTML = `
-                <div>
-                    <div class="fw-semibold">${productName}</div>
-                    <div class="kp-muted small">${qty} x ${formatRupiah(price)}</div>
-                    ${discountAmount > 0 ? `<div class="kp-muted small">Diskon: -${formatRupiah(discountAmount)}</div>` : ''}
+                <div class="kp-cart-item-main">
+                    <div class="kp-cart-item-title">${productName}</div>
+                    <div class="kp-cart-item-meta">${qty} x ${formatRupiah(price)}</div>
+                    ${discountAmount > 0 ? `<div class="kp-cart-item-meta">Diskon: -${formatRupiah(discountAmount)}</div>` : ''}
                 </div>
-                <div class="text-end">
-                    <div class="fw-semibold">${formatRupiah(lineTotal)}</div>
-                    <div class="d-flex flex-column align-items-end gap-1">
+                <div class="kp-cart-item-side">
+                    <div class="kp-cart-item-total">${formatRupiah(lineTotal)}</div>
+                    <div class="kp-cart-actions">
                         <button type="button" class="kp-void-btn discount-btn" data-id="${productId}" data-name="${productName}">
                             <span class="material-icons-outlined">percent</span>
                             Diskon
@@ -1063,7 +1054,10 @@ require_once __DIR__ . '/../layouts/header.php';
             setQty(productId, qty);
             activeProductId = productId;
             productCards.forEach((card) => card.classList.remove('active'));
-            button.closest('.kp-product-card').classList.add('active');
+            const card = button.closest('.kp-product-card');
+            if (card) {
+                card.classList.add('active');
+            }
         });
     });
 

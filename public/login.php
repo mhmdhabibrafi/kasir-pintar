@@ -41,8 +41,14 @@ require_once __DIR__ . '/../app/views/layouts/header.php';
                         </div>
                         <button class="btn kp-btn-primary kp-btn-auth w-100" type="submit">
                             <span class="material-icons-outlined">login</span>
-                            Login
+                            Masuk
                         </button>
+                        <div class="mt-3">
+                            <a class="btn kp-btn-ghost kp-auth-register-link w-100" href="<?php echo e(base_url('daftar-mitra')); ?>">
+                                <span class="material-icons-outlined">storefront</span>
+                                Daftar Mitra KASPINDO
+                            </a>
+                        </div>
                     </form>
             </div>
         </div>
