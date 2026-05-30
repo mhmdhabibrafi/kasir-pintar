@@ -21,6 +21,7 @@ if ($role === 'superadmin') {
         ['label' => __('nav.tenant_users'), 'icon' => 'groups', 'url' => base_url('superadmin_users.php'), 'match' => 'superadmin_user'],
         ['label' => __('nav.maintenance'), 'icon' => 'construction', 'url' => base_url('superadmin_store_requests.php?focus=maintenance'), 'match' => 'focus=maintenance'],
         ['label' => 'Telegram Sistem', 'icon' => 'notifications', 'url' => base_url('admin_notifications.php'), 'match' => 'admin_notifications.php'],
+        ['label' => __('nav.ai_assistant'), 'icon' => 'auto_awesome', 'url' => base_url('admin_ai_assistant.php'), 'match' => 'admin_ai_assistant.php'],
         ['label' => 'System Health', 'icon' => 'monitor_heart', 'url' => base_url('system_health.php'), 'match' => 'system_health.php'],
         ['label' => __('nav.audit'), 'icon' => 'fact_check', 'url' => base_url('admin_audit.php'), 'match' => 'admin_audit.php'],
         ['label' => __('nav.backup'), 'icon' => 'backup', 'url' => base_url('superadmin_backup.php'), 'match' => 'superadmin_backup.php'],
@@ -39,6 +40,7 @@ if ($role === 'superadmin') {
         ['label' => __('nav.promo'), 'icon' => 'local_offer', 'url' => base_url('admin_promos.php'), 'match' => 'admin_promos.php'],
         ['label' => __('nav.store_info'), 'icon' => 'storefront', 'url' => base_url('admin_store.php'), 'match' => 'admin_store.php'],
         ['label' => __('nav.telegram'), 'icon' => 'notifications', 'url' => base_url('admin_notifications.php'), 'match' => 'admin_notifications.php'],
+        ['label' => __('nav.ai_assistant'), 'icon' => 'auto_awesome', 'url' => base_url('admin_ai_assistant.php'), 'match' => 'admin_ai_assistant.php'],
         ['label' => __('nav.refund'), 'icon' => 'undo', 'url' => base_url('admin_refunds.php'), 'match' => 'admin_refunds.php'],
         ['label' => __('nav.transaction'), 'icon' => 'receipt_long', 'url' => base_url('admin_transactions.php'), 'match' => 'admin_transactions.php'],
     ];
@@ -54,6 +56,7 @@ if ($role === 'superadmin') {
         ['label' => __('nav.stock'), 'icon' => 'warehouse', 'url' => base_url('admin_inventory.php'), 'match' => 'admin_inventory.php'],
         ['label' => __('nav.store_info'), 'icon' => 'storefront', 'url' => base_url('admin_store.php'), 'match' => 'admin_store.php'],
         ['label' => __('nav.promo'), 'icon' => 'local_offer', 'url' => base_url('admin_promos.php'), 'match' => 'admin_promos.php'],
+        ['label' => __('nav.ai_assistant'), 'icon' => 'auto_awesome', 'url' => base_url('admin_ai_assistant.php'), 'match' => 'admin_ai_assistant.php'],
         ['label' => __('nav.refund'), 'icon' => 'undo', 'url' => base_url('admin_refunds.php'), 'match' => 'admin_refunds.php'],
         ['label' => __('nav.cashier'), 'icon' => 'point_of_sale', 'url' => base_url('kasir.php'), 'match' => 'kasir.php'],
         ['label' => __('nav.item_report'), 'icon' => 'list_alt', 'url' => base_url('bos_items.php'), 'match' => 'bos_items.php'],

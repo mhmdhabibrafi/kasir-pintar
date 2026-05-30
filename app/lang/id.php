@@ -24,6 +24,7 @@ return [
     'nav.history' => 'Riwayat',
     'nav.logout' => 'Keluar',
     'nav.support' => 'Support',
+    'nav.ai_assistant' => 'AI Assistant',
     'nav.store_requests' => 'Approval Toko',
     'nav.superadmin_overview' => 'Ringkasan',
     'nav.referrals' => 'Referral',

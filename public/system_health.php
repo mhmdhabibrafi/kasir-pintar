@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../app/config/database.php';
 require_once __DIR__ . '/../app/auth/middleware.php';
 require_once __DIR__ . '/../app/helpers/backup_helper.php';
+require_once __DIR__ . '/../app/helpers/ai_assistant_helper.php';
 require_once __DIR__ . '/../app/helpers/db_migration_helper.php';
 require_once __DIR__ . '/../app/helpers/domain_helper.php';
 require_once __DIR__ . '/../app/helpers/telegram_helper.php';
@@ -139,6 +140,16 @@ $addCheck(
     $supportEnabled
         ? 'Aktif dan tampil untuk role yang diizinkan.'
         : 'Nonaktif. Set APP_SUPPORT_ENABLED=1 jika fitur support mitra ingin dipakai lagi.'
+);
+
+$aiStatus = ai_assistant_status();
+$addCheck(
+    'AI',
+    'AI Assistant / Codex-ready',
+    $aiStatus['ready'] ? 'ok' : 'warning',
+    $aiStatus['ready']
+        ? 'Siap memakai provider ' . (string) $aiStatus['provider'] . ' dengan model ' . (string) $aiStatus['model'] . '.'
+        : 'Belum aktif: ' . implode(', ', $aiStatus['reasons'])
 );
 
 try {

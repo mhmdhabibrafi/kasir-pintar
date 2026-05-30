@@ -24,6 +24,7 @@ return [
     'nav.history' => 'History',
     'nav.logout' => 'Logout',
     'nav.support' => 'Support',
+    'nav.ai_assistant' => 'AI Assistant',
     'nav.store_requests' => 'Store Approval',
     'nav.superadmin_overview' => 'Overview',
     'nav.referrals' => 'Referrals',

@@ -17,6 +17,7 @@ Repository ini bernama **kasir-pintar**, sedangkan nama produk/aplikasinya tetap
 - Refund/retur yang terhubung ke laporan kas.
 - Laporan kas dan transaksi dengan export CSV/PDF.
 - Notifikasi Telegram untuk aktivitas operasional penting.
+- AI Assistant siap OpenAI Responses API untuk insight operasional dan workflow Codex-ready.
 - Live support internal untuk toko dan superadmin.
 - Panel superadmin untuk approval mitra, toko aktif, user tenant, custom domain, maintenance, dan health check.
 - Backup database terjadwal dengan opsi integrasi penyimpanan eksternal.
@@ -104,8 +105,36 @@ Konfigurasi utama:
 - `APP_SUPPORT_ENABLED`
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_CHAT_ID`
+- `AI_ASSISTANT_ENABLED`
+- `OPENAI_API_KEY`
+- `OPENAI_MODEL`
+- `OPENAI_PROJECT`
 
 Untuk mode SaaS/custom domain, arahkan domain mitra ke server pusat, lalu daftarkan domain tersebut dari panel superadmin. Detail operasional production sebaiknya disimpan di dokumentasi privat.
+
+## AI Assistant dan Codex-Ready API
+
+KASPINDO menyiapkan modul AI Assistant berbasis server-side API untuk membantu admin/bos/superadmin membaca insight operasional dari data transaksi, kas, stok, refund, dan performa produk.
+
+Fitur yang tersedia:
+
+- Halaman web: `admin_ai_assistant.php`
+- Endpoint API internal: `POST /api/ai_assistant.php`
+- Autentikasi endpoint memakai bearer token API KASPINDO.
+- Credential OpenAI hanya dibaca dari `.env` di server.
+- Snapshot data yang dikirim ke AI dibatasi pada ringkasan operasional, bukan password, token, credential backup, atau file private.
+- Health check integrasi tampil di `system_health.php`.
+
+Konfigurasi minimal:
+
+```env
+AI_ASSISTANT_ENABLED=1
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-5.5
+OPENAI_PROJECT=
+```
+
+Modul ini mengikuti pola OpenAI Responses API untuk integrasi aplikasi dan siap dipakai bersama workflow Codex/code-generation pada project GitHub. Catatan: akses ChatGPT/Pro dan penggunaan OpenAI API dapat memiliki billing, credential, atau entitlement yang berbeda sesuai kebijakan OpenAI.
 
 ## Struktur Project
 
